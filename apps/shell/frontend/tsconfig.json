@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@components/*": ["src/components/*"],
+      "@hooks/*": ["src/hooks/*"],
+      "@internal-apps/*": ["src/internal-apps/*/frontend/*"],
+      "@types/*": ["src/types/*"],
+      "@vision/*": ["src/vision/*"]
+    }
+  },
+  "include": ["src"]
+}
