@@ -1,0 +1,22 @@
+{
+  "tauri": {
+    "bundle": {
+      "active": true,
+      "targets": ["msi"],
+      "identifier": "com.nexus.os",
+      "name": "NEXUS OS",
+      "resources": [],
+      "externalBin": [],
+      "icon": []
+    },
+    "security": {
+      "csp": null
+    },
+    "windows": [],
+    "macOSPrivateApi": false
+  },
+  "product": {
+    "name": "NEXUS OS",
+    "version": "0.1.0"
+  }
+}
