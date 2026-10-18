@@ -1,0 +1,18 @@
+{
+  "name": "nexus-os",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AI-Native Intelligent Desktop Environment - modular startup scaffold",
+  "workspaces": [
+    "apps/shell/frontend",
+    "apps/shell/frontend/internal-apps/*/frontend"
+  ],
+  "scripts": {
+    "dev": "cd apps/shell/frontend && npm run dev",
+    "build": "cd apps/shell/frontend && npm run build",
+    "tauri": "cd src-tauri && cargo run",
+    "engine": "cd apps/engine/backend && python main.py",
+    "setup": "bash scripts/dev-setup.sh"
+  },
+  "devDependencies": {}
+}
