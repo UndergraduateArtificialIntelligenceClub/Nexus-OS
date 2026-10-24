@@ -44,26 +44,87 @@ The bottleneck is **not** the store implementation — it is agreeing on a thin 
               Joint demo / sign-off
 ```
 
-### Day 0 only shared blocker (do this first, together)
+### Day 0 contract lock — 50/50 status
 
-**Needed:** 30–60 minutes, same call or async PR.
+**Purpose:** freeze one shared boundary and provide a reactive mock so both tracks can continue independently.
 
-**Do together (or Yash lands PR #1 same day):**
-1. Lock `WindowState` / `DesktopSession` / `WindowMode` in `modules/window-state/types.ts`
-2. Add `apps/shell/frontend/src/wm/DesktopStoreAPI.ts` — **interface only** (no logic)
-3. Add `apps/shell/frontend/src/wm/mockDesktopStore.ts` — in-memory fake that implements the interface (can be written by **either** person; Divy can write the mock if Yash is busy)
+#### Yash’s 50% — complete
 
-**Output of Day 0:**
-- [ ] Types committed
-- [ ] `DesktopStoreAPI` interface committed
-- [ ] Working mock store Divy can import tomorrow without waiting for Yash’s real reducer
+| Deliverable | Status | Output |
+|-------------|--------|--------|
+| Canonical window/session types | **Done** | `WindowMode`, `WindowState`, `DesktopGrid`, and `DesktopSession` in `modules/window-state/types.ts` |
+| Remove shell type duplication | **Done** | Shell `WindowState.ts` type-only re-exports `@nexus/window-state` |
+| Frozen store contract | **Done** | `apps/shell/frontend/src/wm/DesktopStoreAPI.ts` |
+| Shared context/hook | **Done** | `DesktopStoreContextProvider` + `useDesktopStore()` |
+| Build scaffold/verification | **Done** | Type-check and production build pass |
 
-After Day 0, **neither person blocks the other**.
+Yash also fixed existing frontend build blockers: the invalid internal-app path alias, missing Vite `@` alias and `index.html`, incorrect `App` import, and untyped Tauri global usage.
+
+Stable imports now available to Divy:
+
+```typescript
+import type {
+  ArrangePreset,
+  DesktopStoreAPI,
+  OpenAppOptions,
+} from '@/wm/DesktopStoreAPI'
+import { useDesktopStore } from '@/wm/DesktopStoreContext'
+import type {
+  DesktopGrid,
+  DesktopSession,
+  WindowMode,
+  WindowState,
+} from '@/types/WindowState'
+```
+
+**Frozen rule:** Divy must not rename or change these action signatures without agreeing with Yash.
+
+#### Divy’s 50% — remaining Day 0 work
+
+**Task D0-D1 — Add the reactive mock provider**
+
+Create `apps/shell/frontend/src/wm/MockDesktopProvider.tsx`.
+
+Implementation:
+1. Seed two internal windows: Notes and Files (`isExternal: false`).
+2. Use default grid `{ cols: 12, rows: 8 }`.
+3. Implement every `DesktopStoreAPI` method with React state:
+   - `openApp`, `closeApp`, `focusApp`
+   - `moveWindow`, `resizeWindow`, `setMode`
+   - `arrange`, `switchWorkspace`
+   - `hydrate`, `getSnapshot`
+4. Enforce: at most one focused window; `focusedId` matches it; focused window gets highest `zIndex`.
+5. Keep minimized windows in `windows[]`.
+6. Wrap children with Yash’s `DesktopStoreContextProvider`.
+7. Do not add persistence or IPC.
+
+Output:
+- [ ] `<MockDesktopProvider>` compiles and provides the complete frozen API
+- [ ] `useDesktopStore()` re-renders consumers after state changes
+- [ ] Two seed windows are available for component work
+- [ ] `arrange` exists; a documented no-op is acceptable for Day 0
+
+**Task D0-D2 — Validate the contract**
+
+Use a temporary dev harness or the first `WorkspaceCanvas` implementation to verify:
+
+- [ ] `openApp` returns an ID and focuses the new window
+- [ ] `focusApp` clears prior focus and raises z-index
+- [ ] Move/resize update geometry
+- [ ] Minimize retains the window in session
+- [ ] Close removes the window
+- [ ] `hydrate(getSnapshot())` preserves session state
+- [ ] `npx tsc --noEmit` passes
+- [ ] `npm run build` passes
+
+**Divy Day 0 output:** a mock-backed UI development environment. After this is merged, Divy starts B1–B3 while Yash independently starts the real store/persistence.
+
+After Divy completes these two tasks, **Day 0 is complete and neither person blocks the other**.
 
 ### How Divy works without Yash’s real store
 
 - Build `WindowFrame` / canvas / taskbar against **`DesktopStoreAPI`**, not against Yash’s hook internals
-- During development, wrap UI in `MockDesktopProvider` (or pass mock actions as props)
+- During development, wrap UI in Divy’s `MockDesktopProvider`
 - Snap/arrange = **pure functions** (`snap.ts`) — zero store dependency; unit-test with numbers only
 
 ### How Yash works without Divy’s UI
@@ -90,8 +151,9 @@ After Day 0, **neither person blocks the other**.
 | `apps/shell/.../hooks/useDesktopState.ts` | Yash | — |
 | `apps/shell/.../hooks/useIPC.ts` | Yash | — |
 | `src-tauri/src/commands/window.rs` | Yash | — |
-| `apps/shell/.../wm/DesktopStoreAPI.ts` | Shared Day 0, then freeze | — |
-| `apps/shell/.../wm/mockDesktopStore.ts` | Divy OK to own | Yash may improve later |
+| `apps/shell/.../wm/DesktopStoreAPI.ts` | Yash Day 0, then freeze | Divy reviews signatures |
+| `apps/shell/.../wm/DesktopStoreContext.tsx` | Yash Day 0, then freeze | Divy consumes hook |
+| `apps/shell/.../wm/MockDesktopProvider.tsx` | Divy Day 0 | Yash’s contract is read-only |
 | `apps/shell/.../components/WindowFrame.tsx` | Divy | — |
 | `apps/shell/.../components/WorkspaceCanvas.tsx` | Divy | — |
 | `apps/shell/.../components/Taskbar.tsx` | Divy | — |
@@ -132,11 +194,16 @@ interface WindowState {
   gridH?: number
 }
 
+interface DesktopGrid {
+  cols: number
+  rows: number
+}
+
 interface DesktopSession {
   windows: WindowState[]
   focusedId: string | null
   activeWorkspaceId: string
-  grid?: { cols: number; rows: number }
+  grid: DesktopGrid
 }
 ```
 
@@ -250,7 +317,7 @@ Also expose read state to UI: `windows`, `focusedId`, `activeWorkspaceId` (via h
 ## Task B1 — Interactive WindowFrame
 
 ### Needed
-- Day 0 mock store **or** props matching `DesktopStoreAPI` actions
+- Divy’s Day 0 `MockDesktopProvider` + Yash’s shared `useDesktopStore()` hook
 - Does **not** need Yash’s real reducer or persist
 
 ### Do
@@ -332,7 +399,7 @@ Also expose read state to UI: `windows`, `focusedId`, `activeWorkspaceId` (via h
 
 | When | Yash | Divy | Waiting? |
 |------|------|------|----------|
-| Day 0 | Land types + API (+ help with mock) | Agree API; start mock if needed | **Together once** |
+| Day 0 | **Done:** types + API + context + build | Implement + validate mock provider | **No dependency: contract is frozen** |
 | Days 1–3 | Real store + persist | WindowFrame + snap pure + canvas | **No** |
 | Days 3–4 | IPC | Taskbar + polish on mock | **No** |
 | Day 5 | Glue + persist UI test | Glue + demo | **Yes — glue only** |
@@ -368,8 +435,9 @@ Also expose read state to UI: `windows`, `focusedId`, `activeWorkspaceId` (via h
 | File | Owner |
 |------|--------|
 | `modules/window-state/types.ts` | Yash (Day 0 shared) |
-| `apps/shell/.../wm/DesktopStoreAPI.ts` | Day 0 freeze |
-| `apps/shell/.../wm/mockDesktopStore.ts` | Divy (dev) |
+| `apps/shell/.../wm/DesktopStoreAPI.ts` | Yash (Day 0 freeze) |
+| `apps/shell/.../wm/DesktopStoreContext.tsx` | Yash (Day 0 freeze) |
+| `apps/shell/.../wm/MockDesktopProvider.tsx` | Divy (remaining Day 0) |
 | `hooks/useDesktopState.ts` | Yash |
 | `hooks/useIPC.ts` + Rust persist | Yash |
 | `WindowFrame.tsx` / `WorkspaceCanvas.tsx` / `Taskbar.tsx` | Divy |
