@@ -100,6 +100,7 @@ nexus-os/
 │   ├── storage/                            # SQLite schema & migrations
 │   ├── vision/                             # MediaPipe gesture pipeline
 │   ├── config/                             # env vars & feature flags
+│   ├── search/                             # Search contracts, schema, and examples
 │   └── README.md
 │
 ├── tests/
@@ -131,6 +132,7 @@ nexus-os/
 | `modules/storage` | SQLite schema, migrations, session cache | SQL |
 | `modules/vision` | MediaPipe landmark/gesture pipeline | MediaPipe Tasks Vision |
 | `modules/config` | env loading, feature flags | dotenv |
+| `modules/search` | Search & Discover contracts, JSON Schema, and examples | Pydantic + JSON Schema + TypeScript |
 
 ---
 

@@ -5,6 +5,7 @@ Search & Discover provides provider-neutral web retrieval, multimedia discovery,
 ## Documents
 
 - [Architecture and trust boundaries](architecture.md)
+- [Shared contracts](contracts.md)
 
 ## Current Status
 
