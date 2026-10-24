@@ -1,12 +1,14 @@
+import type { ReactNode } from 'react'
 import { WindowState } from '@/types/WindowState'
 
 interface WindowFrameProps {
   window: WindowState
   onMove: (id: string, x: number, y: number) => void
   onResize: (id: string, w: number, h: number) => void
+  children?: ReactNode
 }
 
-export function WindowFrame({ window, onMove, onResize }: WindowFrameProps) {
+export function WindowFrame({ window, onMove, onResize, children }: WindowFrameProps) {
   return (
     <div
       className="nexus-window-frame"
@@ -19,7 +21,7 @@ export function WindowFrame({ window, onMove, onResize }: WindowFrameProps) {
       }}
     >
       <div className="nexus-window-titlebar">{window.title}</div>
-      <div className="nexus-window-content" />
+      <div className="nexus-window-content">{children}</div>
     </div>
   )
 }

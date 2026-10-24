@@ -12,7 +12,6 @@
       "@/*": ["src/*"],
       "@components/*": ["src/components/*"],
       "@hooks/*": ["src/hooks/*"],
-      "@internal-apps/*": ["src/internal-apps/*/frontend/*"],
       "@types/*": ["src/types/*"],
       "@vision/*": ["src/vision/*"]
     }
