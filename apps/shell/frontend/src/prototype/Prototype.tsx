@@ -1,11 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { AsciiFrame, ENTER_MS, useReducedMotion, type Phase } from './AsciiFrame'
 import {
-  CELL,
-  COLS,
   GRID_H,
   GRID_W,
-  ROWS,
   SIZE_DIMS,
   SIZE_ORDER,
   findSlot,
@@ -18,6 +15,8 @@ import {
 } from './layout'
 import { KINDS, WIDGETS, WidgetBody, nearestSize, type Kind } from './widgets'
 import { parseCommand, type SizeRequest } from './agent'
+import { DotField } from './DotField'
+import { useTheme } from './theme'
 
 interface Item extends Placement {
   kind: Kind
@@ -43,9 +42,8 @@ const INITIAL: Item[] = [
   makeItem('files', '1x1', { col: 3, row: 1 }, 750),
 ]
 
-const CELLS = Array.from({ length: COLS * ROWS }, (_, i) => ({ col: i % COLS, row: Math.floor(i / COLS) }))
 const IS_MAC = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
-const HELP = 'try "show terminal", "make clock small", "hide notes", "tidy up" or "hide everything".'
+const HELP = 'try "show terminal", "make clock small", "hide notes", "tidy up" or "dark mode".'
 
 type TrayState = 'closed' | 'open' | 'closing'
 
@@ -58,6 +56,14 @@ export function Prototype() {
   const inputRef = useRef<HTMLInputElement>(null)
   const reduced = useReducedMotion()
   const scale = useFitScale(GRID_W, GRID_H)
+  const [theme, setTheme] = useTheme()
+
+  const switchTheme = (next: 'light' | 'dark' | 'toggle'): string => {
+    const target = next === 'toggle' ? (theme === 'dark' ? 'light' : 'dark') : next
+    if (target === theme) return `already in ${theme} mode.`
+    setTheme(target)
+    return `switched to ${target} mode.`
+  }
 
   // --- layout operations (each returns the agent's reply) ---
 
@@ -151,6 +157,8 @@ export function Prototype() {
         return tidy()
       case 'hideAll':
         return hideAll()
+      case 'theme':
+        return switchTheme(cmd.theme)
       case 'help':
         return HELP
       case 'unknown':
@@ -196,19 +204,10 @@ export function Prototype() {
 
   return (
     <div className="proto" data-reduced={reduced || undefined}>
+      <DotField theme={theme} reduced={reduced} />
       <main className="proto-stage">
         <div className="proto-grid-box" style={{ width: GRID_W * scale, height: GRID_H * scale }}>
           <div className="proto-grid" style={{ width: GRID_W, height: GRID_H, transform: `scale(${scale})` }}>
-            {CELLS.map(({ col, row }) => (
-              <span
-                key={`${col}-${row}`}
-                className="proto-cell-dot"
-                style={{ left: offset(col) + CELL / 2, top: offset(row) + CELL / 2 }}
-                aria-hidden="true"
-              >
-                ·
-              </span>
-            ))}
             {items.map((it) => {
               const d = SIZE_DIMS[it.size]
               return (
@@ -278,6 +277,10 @@ export function Prototype() {
           <span>
             <kbd>/</kbd> ask
           </span>
+          <span aria-hidden="true">·</span>
+          <button type="button" className="proto-hint-btn" onClick={() => setReply(switchTheme('toggle'))}>
+            {theme === 'dark' ? 'light mode' : 'dark mode'}
+          </button>
         </p>
       </footer>
     </div>

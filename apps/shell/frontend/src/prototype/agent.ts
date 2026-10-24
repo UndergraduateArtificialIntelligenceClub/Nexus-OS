@@ -11,6 +11,7 @@ export type Command =
   | { type: 'resize'; kind: Kind; size: SizeRequest }
   | { type: 'hideAll' }
   | { type: 'tidy' }
+  | { type: 'theme'; theme: 'light' | 'dark' | 'toggle' }
   | { type: 'help' }
   | { type: 'unknown' }
 
@@ -35,6 +36,11 @@ export function parseCommand(input: string): Command {
   const size = findSize(text)
 
   if (has(text, ['help']) || text.includes('what can you do')) return { type: 'help' }
+  if (!kind) {
+    if (has(text, ['dark'])) return { type: 'theme', theme: 'dark' }
+    if (has(text, ['light'])) return { type: 'theme', theme: 'light' }
+    if (has(text, ['theme'])) return { type: 'theme', theme: 'toggle' }
+  }
   if (has(text, ['tidy', 'arrange', 'rearrange', 'organize', 'organise']) || text.includes('clean up'))
     return { type: 'tidy' }
   if (has(text, ['hide', 'close', 'remove', 'dismiss', 'clear'])) {

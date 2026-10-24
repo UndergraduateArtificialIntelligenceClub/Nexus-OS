@@ -1,17 +1,33 @@
 # Nexus OS — Main Screen UI Overview
 
 ## Feel
-A calm, ambient desktop. Quiet, light, uncluttered. The screen should feel like a
+A calm, ambient desktop. Quiet, uncluttered. The screen should feel like a
 space you rest in, not a control panel.
 
 ## Core Principles
-1. **Light background** — soft, low-contrast base.
+1. **Light and dark modes** — soft, low-contrast base in both. *(proposal)* Follows
+   the system setting by default, with a manual toggle.
 2. **Hidden window manager** — users never see or touch window chrome. No title
    bars, no drag handles, no free-floating windows, no taskbar on the main screen.
 3. **Coherent widgets** — every widget shares one visual style (same tokens for
    type, color, spacing, radius, borders). No widget brings its own look.
 4. **ASCII as motion** — ASCII art is how widgets *move and appear*, not wallpaper.
 5. **Design system** — tokens and component styling come from UI/UX Pro Max.
+
+## Background: Interactive Dot Field
+Inspired by Google Stitch: a dense, even grid of small dots covers the whole screen
+behind the widgets.
+- **Light mode:** light grey dots on the light background.
+- **Dark mode:** dark grey dots on a near-black background.
+- **Colors can change:** grey is the default. *(proposal)* The dot color is a theme
+  token, so it can be tinted or set to a gradient across the screen (like Stitch's
+  green-to-purple).
+- **Hover:** dots near the cursor push away from it, like a magnet, then spring back
+  into the grid when the cursor moves on. Subtle, within a small radius.
+- *(proposal)* Dots are hidden under widgets; the push effect only plays on open
+  background.
+- *(proposal)* With reduced motion on, the dots stay still.
+- *(proposal)* Replaces the faint per-cell dots used in the prototype.
 
 ## Layout: Fixed Grid
 - Widgets snap to a fixed grid; position and size are set by the system, never by
@@ -25,8 +41,8 @@ space you rest in, not a control panel.
   then content types in, then the frame settles into the final clean border.
 - **Move:** when widgets rearrange, they travel between cells with an ASCII motion.
 - *(proposal)* **Remove:** build-in played in reverse (content erases, frame un-draws).
-- *(proposal)* Animations are short (well under a second) and respect a
-  reduced-motion setting.
+- *(proposal)* Animations are short (about a second; the prototype's build-in is
+  ~1.3s) and respect a reduced-motion setting.
 
 ## Adding / Removing Widgets
 - **Primary — ask the agent:** e.g. "show my notes", "hide the clock". The agent
@@ -44,3 +60,6 @@ Terminal, System Monitor.
 - What happens when the grid is full?
 - Do any apps ever need a full-screen / focused view beyond the grid?
 - Exact key shortcut for the widget tray.
+- Does "the colors can change" mean users pick the dot color, or that the dots shift
+  color on their own (a gradient or slow drift)?
+- Should widget cards also switch between light and dark surfaces? (Assumed yes.)
