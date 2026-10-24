@@ -99,23 +99,43 @@ Implementation:
 7. Do not add persistence or IPC.
 
 Output:
-- [ ] `<MockDesktopProvider>` compiles and provides the complete frozen API
-- [ ] `useDesktopStore()` re-renders consumers after state changes
-- [ ] Two seed windows are available for component work
-- [ ] `arrange` exists; a documented no-op is acceptable for Day 0
+- [x] `<MockDesktopProvider>` compiles and provides the complete frozen API
+- [x] `useDesktopStore()` re-renders consumers after state changes
+- [x] Two seed windows are available for component work
+- [x] `arrange` exists; a documented no-op is acceptable for Day 0
 
 **Task D0-D2 — Validate the contract**
 
 Use a temporary dev harness or the first `WorkspaceCanvas` implementation to verify:
 
-- [ ] `openApp` returns an ID and focuses the new window
-- [ ] `focusApp` clears prior focus and raises z-index
-- [ ] Move/resize update geometry
-- [ ] Minimize retains the window in session
-- [ ] Close removes the window
-- [ ] `hydrate(getSnapshot())` preserves session state
+- [x] `openApp` returns an ID and focuses the new window
+- [x] `focusApp` clears prior focus and raises z-index
+- [x] Move/resize update geometry
+- [x] Minimize retains the window in session
+- [x] Close removes the window
+- [x] `hydrate(getSnapshot())` preserves session state
 - [ ] `npx tsc --noEmit` passes
 - [ ] `npm run build` passes
+
+#### Divy's 50% — status
+
+D0-D1 and D0-D2 are implemented; B1–B3 are implemented on the mock store.
+
+| Deliverable | Output |
+|-------------|--------|
+| Mock store | `wm/mockDesktopStore.ts` (framework-free, enforces focus/z-order invariants) + `wm/MockDesktopProvider.tsx` (`useSyncExternalStore`, wraps `DesktopStoreContextProvider`) |
+| Contract validation | `wm/mockDesktopStore.test.ts` — one test per D0-D2 checklist item; Yash's real store should pass the same behavioural checks |
+| `arrange` | Fully implemented (not a no-op). Taskbar uses `wm/arrange.ts`, which only calls `moveWindow`/`resizeWindow`, so the real store does not need to know the canvas size |
+| Snap helpers | `wm/snap.ts` + `wm/snap.test.ts` |
+| UI | `WindowFrame`, `WorkspaceCanvas`, `Taskbar`, `SnapPreview`, `wm/appRegistry.tsx` |
+
+Run `npm install && npm test && npx tsc --noEmit && npm run build` in `apps/shell/frontend` to tick the last two D0-D2 boxes (`vitest` was added as a dev dependency).
+
+Behaviour notes for glue day:
+- Drag/resize geometry is committed once on release, not per pointer move.
+- Release snaps to the 12×8 grid; left/right canvas edge snaps to a half; top edge sets `fullscreen` without touching x/y/width/height (so restore returns to the prior size). Hold Alt for free placement.
+- `setMode(id, 'minimized')` on the focused window hands focus to the next topmost visible window; `focusApp` on a minimized window is a no-op for focus. Taskbar restore calls `setMode(id, 'windowed')` then `focusApp(id)`.
+- Restoring a minimized window always returns it to `windowed` (the API has no "previous mode" field).
 
 **Divy Day 0 output:** a mock-backed UI development environment. After this is merged, Divy starts B1–B3 while Yash independently starts the real store/persistence.
 
@@ -328,8 +348,8 @@ Also expose read state to UI: `windows`, `focusedId`, `activeWorkspaceId` (via h
 5. Placeholder content by `appId`
 
 ### Output
-- [ ] `WindowFrame.tsx` wired to API actions (mock provider in Storybook or temp `App`)
-- [ ] Demo: drag, resize, modes, focus z-order on mock data
+- [x] `WindowFrame.tsx` wired to API actions (mock provider in Storybook or temp `App`)
+- [x] Demo: drag, resize, modes, focus z-order on mock data
 
 **Acceptance:** Fully usable against mock; zero wait on persist/IPC.
 
@@ -347,8 +367,8 @@ Also expose read state to UI: `windows`, `focusedId`, `activeWorkspaceId` (via h
 4. `arrange` presets can be pure: `(windows, preset, canvasSize) => WindowState[]` — Yash’s real `arrange` can call Divy’s pure helper later **or** Divy’s UI calls `moveWindow` in a loop after computing layout
 
 ### Output
-- [ ] `snap.ts` (or similar) with pure helpers + example inputs/outputs in comments or tiny tests
-- [ ] Wired to WindowFrame drag-end against mock
+- [x] `snap.ts` (or similar) with pure helpers + example inputs/outputs in comments or tiny tests
+- [x] Wired to WindowFrame drag-end against mock
 
 **Acceptance:** Given numbers in / numbers out; no Yash dependency.
 
@@ -366,8 +386,8 @@ Also expose read state to UI: `windows`, `focusedId`, `activeWorkspaceId` (via h
 3. Keep provider swap-friendly (`useDesktopStore()` abstract)
 
 ### Output
-- [ ] Canvas + taskbar working on mock
-- [ ] Open → minimize → restore → close loop without Yash
+- [x] Canvas + taskbar working on mock
+- [x] Open → minimize → restore → close loop without Yash
 
 **Acceptance:** Mini-desktop demo on mock store alone.
 
