@@ -14,21 +14,99 @@ Ship a working **internal** window manager inside the Nexus React/Tauri shell so
 
 | Person | Track | Responsibility in one line |
 |--------|--------|----------------------------|
-| **Yash** | WM-A | Own the **data + memory**: what windows exist, who is focused, save/load, IPC read/persist |
-| **Divy** | WM-B | Own the **interaction + UI chrome**: drag/resize/modes, snap, canvas, taskbar — all calling Yash’s store |
+| **Yash** | WM-A | Own the **data + memory**: types, store, save/load, IPC read/persist |
+| **Divy** | WM-B | Own the **interaction + UI chrome**: WindowFrame, snap, canvas, taskbar |
 
 Raghav is optional backup only if blocked — no assigned tasks.
 
-**Hard rule:** there is one window list (Yash’s store). Divy must not keep a separate `useState` array of windows.
+---
+
+## Parallel work model (minimal waiting)
+
+The bottleneck is **not** the store implementation — it is agreeing on a thin **interface**. After a short contract lock, both tracks run in parallel until a final glue pass.
+
+```text
+        ┌─────────────────────────────────────┐
+        │  Day 0 — Contract lock (~30–60 min) │
+        │  types + DesktopStoreAPI interface  │
+        └──────────────┬──────────────────────┘
+                       │
+         ┌─────────────┴─────────────┐
+         ▼                           ▼
+   Yash (no wait)              Divy (no wait)
+   real store                  UI vs MOCK store
+   persist / IPC               snap pure fns
+   IPC contracts               Frame / canvas / taskbar
+         │                           │
+         └─────────────┬─────────────┘
+                       ▼
+              Glue day — swap mock → real
+              Joint demo / sign-off
+```
+
+### Day 0 only shared blocker (do this first, together)
+
+**Needed:** 30–60 minutes, same call or async PR.
+
+**Do together (or Yash lands PR #1 same day):**
+1. Lock `WindowState` / `DesktopSession` / `WindowMode` in `modules/window-state/types.ts`
+2. Add `apps/shell/frontend/src/wm/DesktopStoreAPI.ts` — **interface only** (no logic)
+3. Add `apps/shell/frontend/src/wm/mockDesktopStore.ts` — in-memory fake that implements the interface (can be written by **either** person; Divy can write the mock if Yash is busy)
+
+**Output of Day 0:**
+- [ ] Types committed
+- [ ] `DesktopStoreAPI` interface committed
+- [ ] Working mock store Divy can import tomorrow without waiting for Yash’s real reducer
+
+After Day 0, **neither person blocks the other**.
+
+### How Divy works without Yash’s real store
+
+- Build `WindowFrame` / canvas / taskbar against **`DesktopStoreAPI`**, not against Yash’s hook internals
+- During development, wrap UI in `MockDesktopProvider` (or pass mock actions as props)
+- Snap/arrange = **pure functions** (`snap.ts`) — zero store dependency; unit-test with numbers only
+
+### How Yash works without Divy’s UI
+
+- Implement real context/reducer behind the **same** `DesktopStoreAPI`
+- Persist/restore and IPC can be tested with scripted `openApp` / `moveWindow` calls (no drag UI required)
+- Do not edit Divy’s component files
+
+### Glue (only late dependency — ~half day)
+
+1. Replace `MockDesktopProvider` with Yash’s real provider in `App.tsx`
+2. Point arrange/snap commit path at real `moveWindow` / `resizeWindow` / `arrange`
+3. Run joint sign-off checklist
+
+**Merge rule:** Final product has one live store (Yash’s). Mock is deleted or kept under `__mocks__` for Storybook/tests only.
+
+### File ownership (avoid git conflicts)
+
+| Path | Owner | Other person |
+|------|--------|----------------|
+| `modules/window-state/**` | Yash | Read-only after Day 0 |
+| `modules/ipc/contract.ts` | Yash | — |
+| `modules/storage/**` + persist helpers | Yash | — |
+| `apps/shell/.../hooks/useDesktopState.ts` | Yash | — |
+| `apps/shell/.../hooks/useIPC.ts` | Yash | — |
+| `src-tauri/src/commands/window.rs` | Yash | — |
+| `apps/shell/.../wm/DesktopStoreAPI.ts` | Shared Day 0, then freeze | — |
+| `apps/shell/.../wm/mockDesktopStore.ts` | Divy OK to own | Yash may improve later |
+| `apps/shell/.../components/WindowFrame.tsx` | Divy | — |
+| `apps/shell/.../components/WorkspaceCanvas.tsx` | Divy | — |
+| `apps/shell/.../components/Taskbar.tsx` | Divy | — |
+| `apps/shell/.../wm/snap.ts` (or `utils/snap.ts`) | Divy | — |
+| `apps/shell/.../App.tsx` | **Glue day only** — coordinate; otherwise Divy owns chrome layout, Yash only adds provider wrapper via small PR |
+
+Prefer **two branches** (`wm/yash-store`, `wm/divy-ui`) merging into `wm/integrate` at glue day.
 
 ---
 
-## Shared contract (both agree before coding deep)
+## Shared contract
 
 ### Types (source of truth)
 
-File: `modules/window-state/types.ts`  
-Shell must re-export from `apps/shell/frontend/src/types/WindowState.ts` (no divergent copy).
+File: `modules/window-state/types.ts`
 
 ```typescript
 type WindowMode = 'minimized' | 'windowed' | 'fullscreen'
@@ -48,7 +126,7 @@ interface WindowState {
   zIndex: number
   isExternal: boolean          // always false in Phase 1
   externalHandle?: string
-  gridCol?: number             // optional; for grid snap
+  gridCol?: number
   gridRow?: number
   gridW?: number
   gridH?: number
@@ -62,229 +140,226 @@ interface DesktopSession {
 }
 ```
 
-### Store API Divy will call (Yash implements)
+### `DesktopStoreAPI` (freeze after Day 0)
 
 | Action | Input | Effect |
 |--------|--------|--------|
-| `openApp(appId, opts?)` | app id (+ optional title/size) | Adds a `WindowState`, focuses it |
+| `openApp(appId, opts?)` | app id (+ optional title/size) | Adds `WindowState`, focuses it |
 | `closeApp(id)` | window id | Removes from session |
-| `focusApp(id)` | window id | That window `focused: true`, others false; highest `zIndex` |
+| `focusApp(id)` | window id | One focused; highest `zIndex` |
 | `moveWindow(id, x, y)` | id + position | Updates geometry |
 | `resizeWindow(id, w, h)` | id + size | Updates geometry |
 | `setMode(id, mode)` | id + mode | minimized / windowed / fullscreen |
-| `arrange(preset)` | `'cascade' \| 'tile' \| 'snap-all-to-grid'` | Batch-updates positions |
+| `arrange(preset)` | `'cascade' \| 'tile' \| 'snap-all-to-grid'` | Batch positions |
 | `switchWorkspace(id)` | workspace id | Changes `activeWorkspaceId` |
-| `hydrate(session)` | full `DesktopSession` | Replaces in-memory state (boot) |
-| `getSnapshot()` | — | Returns serializable `DesktopSession` |
+| `hydrate(session)` | full `DesktopSession` | Replaces state (boot) |
+| `getSnapshot()` | — | Serializable `DesktopSession` |
 
-### IPC tools (names stay stable for the AI team later)
+Also expose read state to UI: `windows`, `focusedId`, `activeWorkspaceId` (via hook or store subscription).
 
-File: `modules/ipc/contract.ts`
+### IPC tools (Yash; Divy does not wait on these)
 
 | Command | Input | Output |
 |---------|--------|--------|
-| `get_desktop_state` | optional `{ monitor? }` | `{ windows, focusedId, activeWorkspaceId }` matching live UI |
-| `open_app` | `{ app_name }` | success + new window id |
-| `close_app` | `{ window_id }` | success |
-| `focus_window` | `{ window_id }` | success |
-| `move_window` | `{ window_id, x, y }` | success |
-| `resize_window` | `{ window_id, width, height }` | success |
-| `set_window_mode` | `{ window_id, mode }` | success |
-| `switch_workspace` | `{ workspace_id }` | success |
-| `persist_workspace` | `{ name?, layout? }` or force-flush current | success |
+| `get_desktop_state` | optional `{ monitor? }` | Live session snapshot |
+| `open_app` / `close_app` / `focus_window` | ids / names | success |
+| `move_window` / `resize_window` | id + geometry | success |
+| `set_window_mode` | id + mode | success |
+| `switch_workspace` | workspace id | success |
+| `persist_workspace` | optional name/layout | force flush |
 
 ---
 
-## MVP checkpoints → what “done” means
+## MVP checkpoints
 
-| Checkpoint | Owner | Needed | Output |
-|------------|--------|--------|--------|
-| Define & store layout/state of each active app | Yash | Shared types + store | Every open app is a row in `DesktopSession.windows` |
-| Save opened + focused app | Yash | Debounced persist | Disk/cache file contains windows + `focusedId` |
-| Restore on launch | Yash | Boot hydrate | Relaunch shows same apps, sizes, focus |
-| Move / resize / arrange / minimize / fullscreen | Divy | Store actions from Yash | User can do all of these with mouse on widgets |
-| Grid snap | Divy | Grid size agreed with OS Layout | Widgets snap to cells on drag/resize end |
-| Sign-off | Both | Demo script below | Checklist all green |
+| Checkpoint | Owner | Can start after | Output |
+|------------|--------|-----------------|--------|
+| Define & store layout/state | Yash | Day 0 | Real store implements API |
+| Save opened + focused | Yash | A1 | Disk/cache has session JSON |
+| Restore on launch | Yash | A2 save works | Relaunch restores session |
+| Move / resize / modes | Divy | Day 0 + mock | Mouse controls work on mock |
+| Grid snap | Divy | Day 0 (pure fns) | Snap helpers + wired on drag end |
+| Canvas + taskbar | Divy | Mock store | Mini-desktop UI loop |
+| Sign-off | Both | Glue day | Checklist green on **real** store |
 
 ---
 
-# Yash — WM-A tasks
+# Yash — WM-A tasks (independent after Day 0)
 
-## Task A1 — Types + desktop store
+## Task A1 — Real desktop store
 
 ### Needed
-- Existing stubs: `modules/window-state/types.ts`, `useDesktopState.ts`, `App.tsx`
-- Agreement on `DesktopSession` + store actions (table above)
+- Day 0 types + `DesktopStoreAPI`
+- Does **not** need Divy’s WindowFrame
 
 ### Do
-1. Finalize `WindowState` / `DesktopSession` / `WindowMode` in `modules/window-state/types.ts`
-2. Make shell types re-export that module (delete divergent fields except any shell-only extras kept separate)
-3. Implement `useDesktopState` as React context + reducer with all store actions
-4. Rules that must hold after every action:
-   - At most one window has `focused: true`
-   - Focused window has the highest `zIndex`
-   - `focusedId` matches the focused window’s `id` (or `null` if none)
-   - Minimized windows remain in `windows[]`
-5. Wrap shell in the provider from `App.tsx`
+1. Implement `useDesktopState` context/reducer that satisfies `DesktopStoreAPI`
+2. Invariants: ≤1 focused; focused has max `zIndex`; `focusedId` in sync; minimized stays in `windows[]`
+3. Shell re-exports types from `modules/window-state`
+4. Provide `DesktopProvider` Divy will swap in on glue day
 
 ### Output
-- [ ] Working `DesktopSessionProvider` + `useDesktopState()` hook
-- [ ] Unit-level proof: call `openApp` twice → `windows.length === 2`; `focusApp` → only one focused
-- [ ] Divy can import the hook and call actions without touching window arrays directly
-- [ ] Short note in this folder or PR description: list of exported actions
+- [ ] Real provider + hook implementing the frozen API
+- [ ] Script/test: `openApp` ×2 → length 2; `focusApp` → single focused
+- [ ] Divy can switch import from mock → real with no prop renames
 
-**Acceptance:** From a throwaway button or console, open/close/focus works and state stays consistent.
+**Acceptance:** API-compatible with mock; no UI required.
 
 ---
 
 ## Task A2 — Persist + restore
 
 ### Needed
-- A1 store + `getSnapshot()` / `hydrate()`
-- `modules/storage/schema.sql` (`workspaces.layout` JSON preferred)
-- Fallback allowed: `localStorage` key e.g. `nexus.desktopSession` if SQLite/Tauri not ready in first PR
+- A1 `getSnapshot` / `hydrate` only — **not** Divy’s UI
 
 ### Do
-1. On any geometry/mode/focus/open/close change: debounce ~300–500ms, write full `DesktopSession` JSON
-2. Also flush on window unload / app close if possible
-3. On shell boot (before or immediately as canvas mounts): read last session → `hydrate()`
-4. If no saved session: start empty or single welcome window (pick one; document it)
+1. Debounced save (~300–500ms) of full `DesktopSession` JSON
+2. Prefer SQLite `workspaces.layout`; fallback `localStorage` key `nexus.desktopSession` OK for first PR
+3. Boot: read → `hydrate()`
+4. Test by calling store actions in a small harness / Vitest / manual console — no drag needed
 
 ### Output
-- [ ] Persist path implemented (SQLite `workspaces.layout` and/or localStorage)
-- [ ] Documented restore path (where file/key lives, when hydrate runs)
-- [ ] Manual test: open 2 apps, focus one, kill shell, relaunch → same 2 apps + same focused id + same x/y/w/h (within snap rounding)
+- [ ] Persist + restore path documented
+- [ ] Test: scripted open/move/focus → save → hydrate → state equal
 
-**Acceptance:** Restart test passes without Divy’s snap work (pixel geometry restore is enough).
+**Acceptance:** Restart (or hydrate round-trip) restores windows without any WindowFrame.
 
 ---
 
-## Task A3 — IPC read + persist surface
+## Task A3 — IPC read + persist
 
 ### Needed
-- A1 live store
-- A2 persist flush function
-- `modules/ipc/contract.ts`, `useIPC.ts`, `src-tauri/src/commands/window.rs`
+- A1 (+ A2 flush). **Not** blocked on Divy.
 
 ### Do
-1. Add typed args for WM commands (at least `get_desktop_state`, `persist_workspace`, `focus_window`)
-2. `get_desktop_state` returns current snapshot (from store when invoked from shell; Rust may proxy or return last saved — **preferred:** shell answers from live store in Phase 1)
-3. `persist_workspace` forces an immediate save
-4. Fix Rust compile issues on `ipc_dispatch` if they block `cargo run` (persist/load only; no Win32 mutate required)
+1. Typed IPC args in `modules/ipc/contract.ts`; add `focus_window` if missing
+2. `get_desktop_state` → live snapshot
+3. `persist_workspace` → immediate flush
+4. Fix Rust `ipc_dispatch` compile for persist/load if needed
 
 ### Output
-- [ ] Calling `get_desktop_state` returns JSON that matches open windows on screen
-- [ ] Calling `persist_workspace` writes current session immediately
-- [ ] Contract file lists commands + arg shapes so Agent team can copy later
-- [ ] Brief “how to call from shell” note (via `useIPC` or store)
+- [ ] `get_desktop_state` JSON matches store after scripted opens
+- [ ] Contract documented for Agent team
 
-**Acceptance:** With 2 windows open, `get_desktop_state` lists both with correct `focused` / geometry.
+**Acceptance:** IPC works against store alone.
 
 ---
 
-# Divy — WM-B tasks
+# Divy — WM-B tasks (independent after Day 0)
 
 ## Task B1 — Interactive WindowFrame
 
 ### Needed
-- Yash A1 stub at minimum (`moveWindow`, `resizeWindow`, `setMode`, `focusApp`, `closeApp`)
-- Current `WindowFrame.tsx` (presentational only today)
+- Day 0 mock store **or** props matching `DesktopStoreAPI` actions
+- Does **not** need Yash’s real reducer or persist
 
 ### Do
-1. Titlebar pointer drag → continuous `moveWindow` (or local preview + commit; either OK if store stays source of truth)
-2. Corner/edge resize handles → `resizeWindow`
-3. Chrome buttons: minimize → `setMode(id, 'minimized')`; fullscreen toggle ↔ `windowed`/`fullscreen`; close → `closeApp`
-4. Pointer down on frame → `focusApp`
-5. Content area: render placeholder by `appId` (real widgets come from OS Layout later)
+1. Drag titlebar → `moveWindow`
+2. Resize handles → `resizeWindow`
+3. Minimize / fullscreen / close → `setMode` / `closeApp`
+4. Pointer down → `focusApp`
+5. Placeholder content by `appId`
 
 ### Output
-- [ ] Updated `WindowFrame.tsx` that **calls** the store callbacks/actions (today’s props `onMove`/`onResize` must actually fire)
-- [ ] CSS for titlebar, resize handles, control buttons
-- [ ] Demo GIF or short checklist: drag, resize, minimize, fullscreen, close, focus z-order
+- [ ] `WindowFrame.tsx` wired to API actions (mock provider in Storybook or temp `App`)
+- [ ] Demo: drag, resize, modes, focus z-order on mock data
 
-**Acceptance:** One window can be fully manipulated with mouse; focus brings it above others.
+**Acceptance:** Fully usable against mock; zero wait on persist/IPC.
 
 ---
 
-## Task B2 — Snap + arrange
+## Task B2 — Snap + arrange (most independent)
 
 ### Needed
-- B1 working drag/resize
-- Grid size agreed with OS Layout (recommend default **12 cols × 8 rows** if not specified)
-- Yash `arrange(preset)` + optional grid fields on `WindowState`
+- Day 0 types only (geometry numbers). **No store required** for the math.
 
 ### Do
-1. On drag/resize **end**: snap position/size to grid cells and/or screen edges (left/right half, maximize)
-2. Show a light preview overlay while snapping
-3. Wire arrange presets: `cascade`, `tile`, `snap-all-to-grid` (taskbar button or temp debug controls OK)
-4. Clamp windows so they cannot leave the canvas entirely
+1. Pure functions: pixel ↔ grid; edge half/maximize targets
+2. Default grid **12×8** unless OS Layout specifies otherwise
+3. Preview overlay component can take props `{x,y,w,h}` only
+4. `arrange` presets can be pure: `(windows, preset, canvasSize) => WindowState[]` — Yash’s real `arrange` can call Divy’s pure helper later **or** Divy’s UI calls `moveWindow` in a loop after computing layout
 
 ### Output
-- [ ] Snap helper module (e.g. `snap.ts` or under `components/`) with pure functions + tests or clear examples
-- [ ] Visual preview during drag near snap targets
-- [ ] Documented grid: `{ cols, rows }` and how pixel rect maps to `gridCol/Row/W/H`
+- [ ] `snap.ts` (or similar) with pure helpers + example inputs/outputs in comments or tiny tests
+- [ ] Wired to WindowFrame drag-end against mock
 
-**Acceptance:** Release near left edge → half-screen (or grid-equivalent); `arrange('tile')` lays out all open windowed apps without overlap chaos.
+**Acceptance:** Given numbers in / numbers out; no Yash dependency.
 
 ---
 
 ## Task B3 — WorkspaceCanvas + Taskbar
 
 ### Needed
-- Store with `windows`, `activeWorkspaceId`, minimized handling
+- Mock store with `windows` / `activeWorkspaceId` / minimized
 - B1 frames
 
 ### Do
-1. `WorkspaceCanvas`: render only windows where `workspaceId === activeWorkspaceId` and `mode !== 'minimized'`
-2. `Taskbar`: show running apps; click focused/restores minimized (`setMode` → `windowed` + `focusApp`); optional workspace switch control
-3. Entry point to `openApp` for at least Notes / Files / Settings (buttons or launcher stub; coordinate with OS Layout gallery)
+1. Canvas: filter by workspace + not minimized
+2. Taskbar: list apps, restore minimized, focus; open Notes/Files/Settings stubs
+3. Keep provider swap-friendly (`useDesktopStore()` abstract)
 
 ### Output
-- [ ] `App.tsx` uses `WorkspaceCanvas` + `Taskbar` (not only inline placeholders)
-- [ ] Minimized app disappears from canvas but remains on taskbar and in session
-- [ ] Opening a second app from UI adds a second frame via store
+- [ ] Canvas + taskbar working on mock
+- [ ] Open → minimize → restore → close loop without Yash
 
-**Acceptance:** Full mini-desktop loop without DevTools: open → use → minimize → restore → close.
+**Acceptance:** Mini-desktop demo on mock store alone.
 
 ---
 
-# Integration (both)
+# Glue day (only time you must sync)
 
-## Order
+### Needed
+- Yash A1 done (A2/A3 nice-to-have same day)
+- Divy B1–B3 done on mock
 
-| Step | Yash delivers | Divy delivers | Shared output |
-|------|---------------|---------------|---------------|
-| 1 | Types + store stub (persist no-op OK) | WindowFrame drag against store | One window moves via store |
-| 2 | Focus / open / close solid | Resize + modes + canvas | Multi-window focus works |
-| 3 | Persist / restore | Snap + arrange | Restart keeps layout |
-| 4 | IPC `get_desktop_state` + persist | Taskbar + open apps UI | End-to-end desktop usable |
-| 5 | Joint demo + sign-off | Joint demo + sign-off | Checklist below green |
+### Do
+1. `App.tsx`: real `DesktopProvider` instead of mock
+2. Confirm action names still match (should if API frozen)
+3. Hook snap commit + arrange into real store
+4. Run persist restore with real UI once
+5. Sign-off checklist
+
+### Output
+- [ ] Mock removed from production path
+- [ ] Full demo on real store + persist
+- [ ] Sign-off checklist green
+
+**Estimate:** half day if Day 0 API was frozen; longer only if someone renamed actions.
+
+---
+
+## Parallel calendar (example)
+
+| When | Yash | Divy | Waiting? |
+|------|------|------|----------|
+| Day 0 | Land types + API (+ help with mock) | Agree API; start mock if needed | **Together once** |
+| Days 1–3 | Real store + persist | WindowFrame + snap pure + canvas | **No** |
+| Days 3–4 | IPC | Taskbar + polish on mock | **No** |
+| Day 5 | Glue + persist UI test | Glue + demo | **Yes — glue only** |
+
+---
 
 ## Joint sign-off checklist (final output)
 
-Run this and tick:
-
-- [ ] Open ≥2 apps (e.g. Notes + Files) from UI
-- [ ] Drag and resize both; snap/grid behaves predictably
-- [ ] Arrange tile/cascade works
-- [ ] Minimize one → gone from canvas, still in taskbar/session
-- [ ] Fullscreen one → fills canvas; restore back to prior size
-- [ ] Clicking windows updates focus/z-order correctly
-- [ ] Kill app → relaunch → same windows, geometries, focused app
-- [ ] `get_desktop_state` matches what is on screen
-
-**Final artifact:** this demo is the WM MVP deliverable for review.
+- [ ] Open ≥2 apps from UI
+- [ ] Drag, resize, snap/grid OK
+- [ ] Arrange tile/cascade OK
+- [ ] Minimize → taskbar only; restore works
+- [ ] Fullscreen → restore prior size
+- [ ] Focus / z-order correct
+- [ ] Kill → relaunch restores session
+- [ ] `get_desktop_state` matches screen
 
 ---
 
-## Out of scope (do not build)
+## Out of scope
 
 | Item | Why |
 |------|-----|
-| Win32 `EnumWindows` / `SetWindowPos` / hooks | Phase 5 / Rust OS team |
-| Real Notes/Files app features | OS Layout / app owners |
-| Agent tool loop, voice, gestures, avatar | Other MVP tracks |
-| macOS / Linux native WM | Post-v1 |
+| Win32 native control | Phase 5 |
+| Real app UIs | OS Layout |
+| Agent / voice / gestures / avatar | Other tracks |
+| macOS / Linux WM | Post-v1 |
 
 ---
 
@@ -292,14 +367,11 @@ Run this and tick:
 
 | File | Owner |
 |------|--------|
-| `modules/window-state/types.ts` | Yash |
-| `modules/ipc/contract.ts` | Yash |
-| `modules/storage/schema.sql` (+ persist helpers) | Yash |
-| `apps/shell/frontend/src/hooks/useDesktopState.ts` | Yash |
-| `apps/shell/frontend/src/hooks/useIPC.ts` | Yash (wire) |
-| `src-tauri/src/commands/window.rs` (persist/load) | Yash |
-| `apps/shell/frontend/src/components/WindowFrame.tsx` | Divy |
-| `apps/shell/frontend/src/components/WorkspaceCanvas.tsx` | Divy |
-| `apps/shell/frontend/src/components/Taskbar.tsx` | Divy |
-| Snap helper module | Divy |
-| `apps/shell/frontend/src/App.tsx` | Both (Yash provider; Divy chrome) |
+| `modules/window-state/types.ts` | Yash (Day 0 shared) |
+| `apps/shell/.../wm/DesktopStoreAPI.ts` | Day 0 freeze |
+| `apps/shell/.../wm/mockDesktopStore.ts` | Divy (dev) |
+| `hooks/useDesktopState.ts` | Yash |
+| `hooks/useIPC.ts` + Rust persist | Yash |
+| `WindowFrame.tsx` / `WorkspaceCanvas.tsx` / `Taskbar.tsx` | Divy |
+| `wm/snap.ts` | Divy |
+| `App.tsx` | Glue day (both) |
