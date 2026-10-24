@@ -25,3 +25,6 @@ Thumbs.db
 # Tauri
 src-tauri/target/
 src-tauri/gen/
+
+# Local GitHub issue drafts
+/docs/search/issues/*.md
