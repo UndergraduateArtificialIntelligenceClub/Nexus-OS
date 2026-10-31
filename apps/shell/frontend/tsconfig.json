@@ -13,7 +13,10 @@
       "@nexus/window-state": ["../../../modules/window-state/types.ts"],
       "@components/*": ["src/components/*"],
       "@hooks/*": ["src/hooks/*"],
+<<<<<<< HEAD
       "@internal-apps/*": ["src/internal-apps/*"],
+=======
+>>>>>>> origin/main
       "@types/*": ["src/types/*"],
       "@vision/*": ["src/vision/*"]
     }
