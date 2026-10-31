@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type { Theme } from './theme'
+import type { Theme } from '@/theme'
 
 /**
  * Full-screen dot grid behind the widgets (inspired by Google Stitch).
@@ -15,7 +15,7 @@ const SPRING = 0.08 // pull back toward the target position
 const DAMPING = 0.82 // lower = less wobble
 
 // Pointer over these doesn't push dots: they cover the field anyway.
-const COVERING = '.proto-slot, .proto-tray'
+const COVERING = '.nx-slot, .nx-tray'
 
 export function DotField({ theme, reduced }: { theme: Theme; reduced: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -146,5 +146,5 @@ export function DotField({ theme, reduced }: { theme: Theme; reduced: boolean })
     }
   }, [theme, reduced])
 
-  return <canvas ref={canvasRef} className="proto-dots" aria-hidden="true" />
+  return <canvas ref={canvasRef} className="nx-dots" aria-hidden="true" />
 }

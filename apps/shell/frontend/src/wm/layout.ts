@@ -5,13 +5,19 @@ export const ROWS = 4
 export const CELL = 160
 export const GAP = 16
 
-export type Size = '1x1' | '2x1' | '2x2'
-export const SIZE_ORDER: Size[] = ['1x1', '2x1', '2x2']
+/** Widget footprint in cells, written columns x rows. */
+export type Size = '1x1' | '2x1' | '1x2' | '2x2' | '4x2'
+/** Smallest to largest. */
+export const SIZE_ORDER: Size[] = ['1x1', '2x1', '1x2', '2x2', '4x2']
 export const SIZE_DIMS: Record<Size, { w: number; h: number }> = {
   '1x1': { w: 1, h: 1 },
   '2x1': { w: 2, h: 1 },
+  '1x2': { w: 1, h: 2 },
   '2x2': { w: 2, h: 2 },
+  '4x2': { w: 4, h: 2 },
 }
+
+export const isSize = (v: unknown): v is Size => typeof v === 'string' && v in SIZE_DIMS
 
 export interface Slot {
   col: number

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { useReducedMotion } from '@/theme'
 
 /**
  * Wraps a widget and plays its ASCII motion:
@@ -174,18 +175,6 @@ function animate(duration: number, delay: number, onFrame: (p: number) => void, 
 }
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
-
-export function useReducedMotion() {
-  const query = '(prefers-reduced-motion: reduce)'
-  const [reduced, setReduced] = useState(() => window.matchMedia(query).matches)
-  useEffect(() => {
-    const mq = window.matchMedia(query)
-    const onChange = () => setReduced(mq.matches)
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [])
-  return reduced
-}
 
 function measureCharWidth() {
   const ctx = document.createElement('canvas').getContext('2d')
