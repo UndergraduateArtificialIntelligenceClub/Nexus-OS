@@ -198,12 +198,9 @@ body {
 .nexus-window-content {
   flex: 1;
   min-height: 0;
-<<<<<<< HEAD
   overflow: auto;
-=======
   display: flex;
   flex-direction: column;
->>>>>>> origin/main
   padding: 12px;
 }
 

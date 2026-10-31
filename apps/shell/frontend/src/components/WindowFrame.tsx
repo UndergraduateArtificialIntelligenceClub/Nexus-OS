@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 /**
  * Interactive window chrome (WM-B / Task B1).
  *
@@ -81,19 +80,6 @@ function resizeRect(start: Rect, direction: ResizeDirection, dx: number, dy: num
 }
 
 function PlaceholderContent({ appId }: { appId: string }) {
-=======
-import type { ReactNode } from 'react'
-import { WindowState } from '@/types/WindowState'
-
-interface WindowFrameProps {
-  window: WindowState
-  onMove: (id: string, x: number, y: number) => void
-  onResize: (id: string, w: number, h: number) => void
-  children?: ReactNode
-}
-
-export function WindowFrame({ window, onMove, onResize, children }: WindowFrameProps) {
->>>>>>> origin/main
   return (
     <div className="nexus-app-placeholder">
       <p>No widget registered for</p>
@@ -227,7 +213,6 @@ export function WindowFrame({ window: win, canvasSize, grid, onSnapPreview }: Wi
         if (!win.focused) focusApp(win.id)
       }}
     >
-<<<<<<< HEAD
       <div
         className="nexus-window-titlebar"
         onPointerDown={(e) => startGesture(e, 'move')}
@@ -292,10 +277,6 @@ export function WindowFrame({ window: win, canvasSize, grid, onSnapPreview }: Wi
             {...gestureHandlers}
           />
         ))}
-=======
-      <div className="nexus-window-titlebar">{window.title}</div>
-      <div className="nexus-window-content">{children}</div>
->>>>>>> origin/main
     </div>
   )
 }

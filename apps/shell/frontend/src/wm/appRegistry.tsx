@@ -6,6 +6,7 @@
 
 import type { ComponentType } from 'react'
 
+import { ClockWidget } from '@/internal-apps/clock/frontend/src/App'
 import { FilesWidget } from '@/internal-apps/files/frontend/src/App'
 import { NotesWidget } from '@/internal-apps/notes/frontend/src/App'
 import { SystemMonitorWidget } from '@/internal-apps/system-monitor/frontend/src/App'
@@ -38,6 +39,7 @@ export const APP_REGISTRY: readonly AppDefinition[] = [
     Component: SystemMonitorWidget,
     defaultSize: { width: 480, height: 320 },
   },
+  { appId: 'nexus.clock', title: 'Clock', Component: ClockWidget, defaultSize: { width: 336, height: 160 } },
   { appId: 'nexus.settings', title: 'Settings', Component: SettingsPlaceholder, defaultSize: { width: 480, height: 360 } },
 ]
 
