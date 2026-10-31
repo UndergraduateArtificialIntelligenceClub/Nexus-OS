@@ -15,7 +15,7 @@ const SPRING = 0.08 // pull back toward the target position
 const DAMPING = 0.82 // lower = less wobble
 
 // Pointer over these doesn't push dots: they cover the field anyway.
-const COVERING = '.nx-slot, .nx-tray'
+const COVERING = '.nx-slot, .nx-glass, .nx-fullscreen-panel, .nx-agent'
 
 export function DotField({ theme, reduced }: { theme: Theme; reduced: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)

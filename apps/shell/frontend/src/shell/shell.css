@@ -1,4 +1,5 @@
-/* Desktop layers: dot field, stage and grid, prompt bar. Calm, one shared widget style (see apps/UI-Overview.md). */
+/* Desktop layers: dot field, stage and grid, and the hosts apps render into.
+   The floating chrome (menu bar, dock, Spotlight, avatar) is in chrome/chrome.css. */
 
 .nx-desktop {
   position: relative;
@@ -9,10 +10,15 @@
   font-family: var(--sans);
 }
 
-/* Everything sits above the dot field. */
-.nx-desktop > :not(.nx-dots) {
-  position: relative;
-  z-index: 1;
+/* Stacking, back to front. Chrome positions itself; only the stage needs lifting. */
+.nx-desktop {
+  --z-stage: 1;
+  --z-fullscreen: 20;
+  --z-flight: 25;
+  --z-menubar: 30;
+  --z-dock: 35;
+  --z-agent: 40;
+  --z-spotlight: 50;
 }
 
 .nx-dots {
@@ -32,7 +38,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  position: relative;
+  z-index: var(--z-stage);
+  padding: calc(var(--chrome-top) + 24px) 24px calc(var(--chrome-bottom) + 24px);
+  transition: opacity 300ms var(--ease);
+}
+
+/* Avatar in the centre: the desk steps back so the conversation leads. */
+.nx-desktop[data-focus] .nx-stage {
+  opacity: 0.4;
 }
 
 .nx-grid-box {
@@ -60,122 +74,34 @@
   transition: none;
 }
 
-/* --- Prompt bar: agent prompt, reply, hints, tray (interim, until Spotlight and the Dock) --- */
+/* --- App instances (one stable div per app, moved between hosts) --- */
 
-.nx-prompt-bar {
-  position: relative;
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 0 16px 20px;
+.nx-instance {
+  position: absolute;
+  inset: 0;
 }
 
-/* Solid backing so dots don't run through the text. */
-.nx-prompt,
-.nx-reply:not(:empty),
-.nx-hint {
-  background: var(--bg);
-  border-radius: 8px;
-  transition: background-color 300ms ease;
-}
-
-.nx-reply:not(:empty),
-.nx-hint {
-  padding: 2px 10px;
-}
-
-.nx-prompt {
-  width: min(520px, 100%);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-bottom: 1px solid transparent;
-  font: 14px var(--mono);
-  color: var(--muted);
-  transition: border-color 200ms var(--ease);
-}
-
-.nx-prompt:focus-within {
-  border-bottom-color: var(--accent);
-  color: var(--accent);
-}
-
-.nx-prompt input {
-  flex: 1;
-  min-width: 0;
-  border: none;
-  background: transparent;
-  font: inherit;
-  color: var(--ink);
-}
-
-.nx-prompt input:focus {
+.nx-instance-inner {
+  height: 100%;
+  border-radius: var(--radius);
   outline: none;
 }
 
-.nx-prompt input::placeholder {
-  color: var(--muted);
+/* Spotlight or the dock handed focus to an app with no controls of its own. */
+.nx-instance-inner:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
-.nx-reply {
-  min-height: 18px;
-  margin: 0;
-  font: 12px var(--mono);
-  color: var(--muted);
-  text-align: center;
+/* Minimized apps wait here, still mounted. */
+.nx-keepalive {
+  display: none;
 }
 
-.nx-hint {
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font: 11px var(--mono);
-  color: var(--muted);
-}
-
-.nx-hint-btn {
-  border: none;
-  background: none;
-  padding: 4px;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-}
-
-.nx-tray {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(480px, calc(100vw - 32px));
-  z-index: 10;
-}
-
-.nx-tray-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.nx-tray-row {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  align-items: center;
-  gap: 12px;
-}
-
-.nx-tray-name {
-  font-size: 14px;
-}
-
-.nx-tray-sizes {
-  display: flex;
-  gap: 4px;
+/* Apps fly through here on their way into the dock. */
+.nx-flight {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-flight);
+  pointer-events: none;
 }
