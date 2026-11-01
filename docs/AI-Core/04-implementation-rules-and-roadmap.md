@@ -17,55 +17,62 @@
 11. **Local-first by default.** A basic installation works with local persistence and a configurable model provider; hosted services are opt-in adapters.
 12. **Audit enough to recover.** Record request, proposal, policy decision, approval outcome, execution request, receipt, and checkpoint links with safe diagnostics.
 
-## Proposed repository map
+## Repository map aligned to the current NEXUS OS tree
 
-The LangGraph host, tools, policy, memory, persistence, and trusted gateway are Python backend code. Rust is deliberately kept thin: it packages the desktop shell and hosts the UI, but does not implement backend authority.
+The current repository is `nexus-os`. Python/FastAPI owns agentic backend authority, while `src-tauri` is the native desktop core: it starts the sidecar, observes/manipulates Win32 through narrow typed commands, and does not own agent planning, policy, memory, or persistence decisions. New LangGraph folders extend the existing Python `agent/` package rather than creating a second backend.
 
 ~~~
-nexus-ai-core/
-  apps/desktop/
-    ui/                         # React presentation, approval and progress views
-    src-tauri/                  # Rust/Tauri shell, window lifecycle, local transport only
-  packages/contracts/
-    schemas/                    # Versioned JSON Schema shared with the React UI
-      request.v1.json           # C1/C2 wire contract
-      task.v1.json              # C3/C9 wire contract
-      execution.v1.json         # C4-C7 wire contract
-      memory.v1.json            # C8 and M0-M5 wire contract
-  backend/
-    api/app.py                  # Local Python entrypoint for shell-to-backend requests
-    contracts/models.py         # Pydantic validation models and schema bindings
-    orchestration/
-      graphs/main_graph.py      # Exact main graph and conditional edges
-      graphs/worker_graph.py    # Bounded task worker
-      agents/supervisor.py      # Planning/dependency subgraph
-      agents/desktop.py         # Desktop reasoning subgraph
-      agents/discovery.py       # Research/evidence subgraph
-      agents/knowledge.py       # Memory/retrieval subgraph
-      state/reducers.py         # Safe graph-state merge functions
-      models/gateway.py         # Structured model provider adapter
-    execution/
-      gateway.py                # Python trusted execution gateway
-      adapters/                 # Python filesystem, desktop, document, service adapters
-    registry/tools.json         # Versioned tool metadata
-    policy/evaluator.py         # Deterministic policy decision
-    approvals/service.py        # C5 creation, expiry, invalidation
-    memory/retrieval.py         # Hybrid ranked retrieval
-    memory/validator.py         # C8 validation/deduplication
-    storage/repositories.py     # SQLite repositories
-    checkpoints/store.py        # Checkpoint adapter and resume lookup
-  migrations/                   # SQLite schema migrations
+nexus-os/
+  apps/
+    shell/
+      frontend/
+        src/
+          shell/                # Desktop, WidgetGrid, prompt, taskbar
+          wm/                   # Desktop store and snap-grid layout
+          apps/                 # Internal-app registry
+          ui/ theme/ hooks/     # Shared UI primitives, tokens, useIPC/useGesture
+          internal-apps/        # Per-app frontend + local app backend
+          vision/               # MediaPipe landmark/gesture detection
+          types/                # Frontend WindowState and IPC types
+    engine/
+      backend/
+        agent/
+          graphs/               # Proposed: main_graph.py, worker_graph.py
+          agents/               # Proposed: supervisor.py, desktop.py, discovery.py, knowledge.py
+          workers/              # Proposed bounded worker helpers
+          tools/                # Existing tool home; add registry.py and typed tool modules here
+          memory/               # Existing short-term buffers; extend to M0-M5
+          providers/            # Ollama/OpenAI/Anthropic adapters
+          execution/            # Proposed: policy.py, gateway.py, desktop_bridge.py
+          loop.py               # Existing ReAct loop; migrate/bridge incrementally
+        schemas/                # Pydantic input/output schemas
+        database/               # SQLite sessions, repositories, checkpoint metadata
+        main.py                 # FastAPI entry point
+  src-tauri/
+    src/
+      win32/                    # Window enumeration, hooks, geometry primitives
+      commands/                 # Tauri commands exposed through modules/ipc
+      sidecar.rs                # FastAPI lifecycle management
+      state.rs                  # Cached desktop topology
+      main.rs                   # Native desktop entry point
+  modules/
+    ipc/                        # Typed JSON-RPC: shell <-> Tauri <-> engine
+    window-state/               # Shared WindowState abstraction
+    storage/                    # SQLite schema and migrations
+    vision/                     # Gesture pipeline
+    config/                     # Environment and feature flags
   tests/
-    contracts/ graphs/ agents/ execution/ memory/ integration/
+    bench/ systems/ vision/     # Add graph/tool cases under systems/
+  scripts/ docs/
 ~~~
 
-**Ownership rule:** the UI imports generated contracts, never backend internals; the Rust shell only hosts/forwards UI traffic; Python orchestration imports registry metadata and service interfaces; Python adapters are reachable through the Python gateway only.
+**Ownership rule:** the React shell imports IPC/window-state contracts, never engine internals. The Python engine owns planning, policy, memory, and persistence. Rust owns only native desktop observation/execution behind `modules/ipc`; it must reject malformed commands and never infer user intent or grant approval.
 
 ## Build in dependency order
 
 ### Phase 0 - Contracts and durable skeleton
 
-Build: C1-C9 schemas, status vocabulary, SQLite migrations, repositories for sessions/requests/tasks, an artifact record, and basic audit events.
+Build: Pydantic C1-C9 schemas under `apps/engine/backend/schemas`, shared IPC/`WindowState` contracts under `modules`, SQLite migrations in `modules/storage`, repositories in `apps/engine/backend/database`, and basic audit events.
 
 Done when:
 
@@ -76,7 +83,7 @@ Done when:
 
 ### Phase 1 - Trusted execution core
 
-Build: Python tool registry, policy evaluator, approval service, execution gateway, execution receipts, `system_diagnostics`, and `file_search`.
+Build: Python tool registry/policy/gateway under `apps/engine/backend/agent`, typed `modules/ipc` desktop bridge, Tauri commands/Win32 primitives, execution receipts, `system_diagnostics`, and `file_search`.
 
 Done when:
 
@@ -148,8 +155,8 @@ Run deterministic unit and graph tests without a model provider. Use a fake stru
 
 | Decision | Why it matters | Safe default |
 |---|---|---|
-| LangGraph host language/process | Affects deployment and SDK usage, not contracts | Isolate in `services/orchestrator` |
-| Shell-to-backend transport | Defines UI/backend transport | Narrow typed Rust-shell-to-Python message surface |
+| LangGraph migration boundary | Affects deployment and SDK usage, not contracts | Extend `apps/engine/backend/agent/graphs` beside the existing `loop.py` |
+| IPC transport/versioning | Defines shell/native/engine transport | Versioned JSON-RPC in `modules/ipc` |
 | Local embedding/index library | Controls retrieval performance and packaging | SQLite remains canonical; index is rebuildable |
 | Model provider defaults | Controls privacy/cost/availability | Local provider first, hosted adapter opt-in |
 | Approval policy UX | Shapes trust and interruption recovery | Show exact targets, impact, expiry, and cancel |

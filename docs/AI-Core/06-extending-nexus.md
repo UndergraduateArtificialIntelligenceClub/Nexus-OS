@@ -18,9 +18,9 @@ The default choice is a module or deterministic recipe. Add an agent only when i
 ## The universal extension flow
 
 1. Define the capability in plain language: inputs, output, side effects, target boundary, failure modes, and who should be allowed to use it.
-2. Choose the shape above. If it has a side effect, it must be a registered tool with a Python backend adapter.
+2. Choose the shape above. If it has a side effect, it must be a registered Python engine tool or a typed native desktop command routed through `modules/ipc`.
 3. Add or reuse typed contracts from [02 - API and contracts](02-api-and-contracts.md). Do not pass loose prompt text between layers.
-4. Put deterministic code in the Python backend and reasoning in the relevant agent subgraph. Keep Rust limited to the desktop shell.
+4. Put deterministic logic, reasoning, policy, and persistence in the Python engine. Use Rust only for the existing desktop-shell responsibilities: Tauri lifecycle, Win32 observation, and narrow typed window primitives.
 5. Register the capability and policy before an agent can select it.
 6. Add checkpoint, receipt, provenance, and observability behavior where applicable.
 7. Add focused tests before exposing the capability to the Supervisor.
@@ -34,13 +34,14 @@ A tool is a single registered operation with a typed input/output contract. An a
 
 | Location | Change | Why |
 |---|---|---|
-| `packages/contracts/schemas/execution.v1.json` and `backend/contracts/models.py` | Add JSON Schema and Pydantic validation if generic C4-C7 types are not enough | Keeps arguments typed before they reach policy |
-| `backend/registry/tools.json` | Add one versioned registry entry | Makes the tool discoverable and allows it to be enabled/disabled |
-| `backend/policy/evaluator.py` or a focused rule beside it | Add risk, target, approval, timeout, and retry/idempotency rules | Policy is executable Python code, not prompt text |
-| `backend/execution/adapters/<tool_id>.py` | Implement the Python backend adapter | The Python backend owns actual side effects |
-| `backend/execution/gateway.py` | Register the adapter behind the Python trusted gateway | Prevents a direct call from UI or agent code |
-| `backend/orchestration/agents/<agent>.py` | Add the tool ID to that agent’s explicit allow-list only if needed | An agent gets no tool just because it exists |
-| `tests/contracts/`, `tests/execution/`, `tests/integration/` | Add contract, policy/gateway, and end-to-end tests | Proves the boundary holds under failure |
+| `apps/engine/backend/schemas/<tool_id>.py` | Add Pydantic input/output models when generic C4-C7 types are not enough | Keeps arguments typed before they reach policy |
+| `apps/engine/backend/agent/tools/registry.py` | Add one versioned registry entry | Makes the tool discoverable and allows it to be enabled/disabled |
+| `apps/engine/backend/agent/execution/policy.py` | Add risk, target, approval, timeout, and retry/idempotency rules | Policy is executable Python code, not prompt text |
+| `apps/engine/backend/agent/tools/<tool_id>.py` | Implement a Python engine tool | Use for web, documents, storage, and non-native work |
+| `src-tauri/src/commands/<command>.rs` + `src-tauri/src/win32/<domain>.rs` | Add a typed native desktop primitive only when needed | Rust handles Win32 mechanics, not agent/policy decisions |
+| `modules/ipc/` | Add the Rust/TypeScript/Python wire contract for a native command | Keeps shell-to-engine messages typed and reviewable |
+| `apps/engine/backend/agent/agents/<agent>.py` | Add the tool ID to that agent’s explicit allow-list only if needed | An agent gets no tool just because it exists |
+| `tests/systems/` and `tests/vision/` | Add policy, native-command, and end-to-end cases | Proves the boundary holds under failure |
 
 ### Registry entry template
 
@@ -58,6 +59,7 @@ A tool is a single registered operation with a typed input/output contract. An a
   "timeout_ms": 10000,
   "idempotency": "not_required",
   "adapter_id": "python.example_operation",
+  "native_command_id": null,
   "availability": "enabled"
 }
 ~~~
@@ -72,18 +74,18 @@ agent or recipe
   -> schema + target validation
   -> policy decision / C5 approval when needed
   -> C6 ExecutionRequest
-  -> Python trusted gateway
-  -> registered adapter
+  -> Python policy and execution gateway
+  -> Python engine tool OR modules/ipc -> Tauri command -> Win32 primitive
   -> C7 ExecutionReceipt
   -> worker reconciliation
 ~~~
 
-Never wire `agent -> adapter`, `React UI -> adapter`, or `model output -> shell command`.
+Never wire `agent -> Win32`, `React UI -> Tauri command`, or `model output -> shell command`. The Python gateway is the only component that may issue a native command request.
 
 ### Tool definition of done
 
-- Registry entry, contract schema, policy rule, and adapter version agree.
-- The adapter accepts only validated structured input.
+- Registry entry, Pydantic schema, policy rule, and tool/native-command version agree.
+- A Python tool accepts only validated structured input; a Rust command also rejects malformed IPC payloads.
 - The policy binds approvals to exact arguments and target references.
 - Each execution records an idempotency key, audit event, and receipt or `unknown_outcome`.
 - Tests cover allowed, denied, expired approval, malformed input, timeout, cancellation, and resume-after-crash behavior.
@@ -96,12 +98,13 @@ Use a module for deterministic logic that several graphs, agents, or adapters ca
 
 | Module type | Home | May depend on | Must not depend on |
 |---|---|---|---|
-| Orchestration node/reducer | `backend/orchestration/graphs/` or `state/` | Contracts, backend service interfaces | UI or shell internals |
-| Domain reasoning helper | `backend/orchestration/agents/<domain>/` | Contracts, retrieval/model interfaces | Gateway internals |
-| Deterministic domain service | `backend/core/<domain>/` | Contracts, repositories, stable utilities | UI components |
-| Persistence repository | `backend/storage/` | SQLite/checkpoint interfaces | Agents or model gateway |
-| Policy/approval service | `backend/policy/` or `backend/approvals/` | Registry, contracts, storage | Agent prompts |
-| Execution adapter | `backend/execution/adapters/` | Python system/service libraries | React, graph state, Rust shell |
+| Orchestration node/reducer | `apps/engine/backend/agent/graphs/` or `agent/state/` | Pydantic schemas, engine services | UI or Tauri internals |
+| Domain reasoning helper | `apps/engine/backend/agent/agents/<domain>/` | Schemas, retrieval/model interfaces | Tauri command internals |
+| Deterministic domain service | `apps/engine/backend/agent/services/` | Schemas, repositories, stable utilities | React components |
+| Persistence repository | `apps/engine/backend/database/` | SQLite and `modules/storage` | Agent prompts |
+| Policy/approval service | `apps/engine/backend/agent/execution/` | Registry, schemas, storage | Agent prompts |
+| Python engine tool | `apps/engine/backend/agent/tools/` | Python libraries and typed bridge | React and raw Win32 APIs |
+| Native desktop primitive | `src-tauri/src/commands/` + `win32/` | `modules/ipc`, windows-rs | Agent/model/policy code |
 
 For a module that changes durable data, add a repository method and migration in `migrations/`. Keep the transaction boundary in the service/repository layer, not in an agent node.
 
@@ -113,6 +116,19 @@ For a module that changes durable data, add a repository method and migration in
 - Add unit tests before wiring it to an agent.
 - If it emits events, use the request/task IDs already present in C1-C3.
 
+## Adding an internal shell app
+
+An internal app is a desktop widget, not an agent. Put its UI and app-specific logic together under the existing shell tree:
+
+~~~text
+apps/shell/frontend/src/internal-apps/<app_name>/
+  frontend/                    # React widget, views, local interaction state
+  backend/                     # App-local logic/storage adapter, if genuinely needed
+  README.md                     # Purpose, IPC/API surface, run/test notes
+~~~
+
+Also register the widget in `apps/shell/frontend/src/apps/` (sizes, aliases, modes) and use `modules/window-state` for its shared `WindowState`. If the widget needs agent work, call the Python engine through `modules/ipc`; do not embed agent policy or raw Win32 calls in the widget.
+
 ## Adding a new agent
 
 Create a new agent only if a tool, recipe, or helper inside Desktop, Discovery, Knowledge, or Supervisor would become confusing. An agent needs a clear domain boundary, a bounded state shape, a capability allow-list, and its own success/failure criteria.
@@ -121,13 +137,13 @@ Create a new agent only if a tool, recipe, or helper inside Desktop, Discovery, 
 
 | Location | Change |
 |---|---|
-| `backend/orchestration/agents/<agent_name>.py` | Define the subgraph, its prompt/model use, nodes, edges, and C9 result mapping |
-| `backend/orchestration/agents/<agent_name>_state.py` | Add state only when C2/C3/C9 cannot express the scoped fields cleanly |
-| `backend/orchestration/agents/supervisor.py` | Add the capability-group routing rule and task-packet assignment |
-| `backend/orchestration/graphs/worker_graph.py` | Add the allowed agent selection; preserve scope validation |
-| `packages/contracts/schemas/task.v1.json` or `execution.v1.json` plus `backend/contracts/models.py` | Add structured domain output only if it crosses a module boundary |
-| `backend/registry/tools.json` and policy rules | Declare every tool the agent is allowed to propose |
-| `tests/agents/test_<agent_name>.py` | Test routes, structured output, denied tool behavior, and failure/replan behavior |
+| `apps/engine/backend/agent/agents/<agent_name>.py` | Define the subgraph, its prompt/model use, nodes, edges, and C9 result mapping |
+| `apps/engine/backend/agent/agents/<agent_name>_state.py` | Add state only when C2/C3/C9 cannot express the scoped fields cleanly |
+| `apps/engine/backend/agent/agents/supervisor.py` | Add the capability-group routing rule and task-packet assignment |
+| `apps/engine/backend/agent/graphs/worker_graph.py` | Add the allowed agent selection; preserve scope validation |
+| `apps/engine/backend/schemas/` | Add structured Pydantic output only if it crosses a module boundary |
+| `apps/engine/backend/agent/tools/registry.py` and execution policy | Declare every tool the agent is allowed to propose |
+| `tests/systems/test_<agent_name>.py` | Test routes, structured output, denied tool behavior, and failure/replan behavior |
 | `05-reference-glossary.md` and D3 | Add the name, scope, and topology if it becomes canonical |
 
 ### Minimal subgraph contract
@@ -155,13 +171,14 @@ An agent is not a privileged service. It may ask for a tool through C4, propose 
 
 | Integration | Exact owner | What to change |
 |---|---|---|
-| User starts work | React -> Rust desktop shell -> Python backend | The shell forwards C1; do not add graph logic to the UI or shell |
-| Main route changes | `backend/orchestration/graphs/main_graph.py` | Add/adjust a node only when it affects global lifecycle |
-| Domain selection changes | `backend/orchestration/agents/supervisor.py` | Map capability group to agent or recipe |
-| Task safety changes | `backend/orchestration/graphs/worker_graph.py` + policy | Keep validation before gateway invocation |
-| New execution ability | Python registry + policy + adapter + gateway | All four are required |
+| User starts work | React -> Tauri -> `modules/ipc` -> Python FastAPI | The shell transports C1; do not add graph logic to the UI or native core |
+| Main route changes | `apps/engine/backend/agent/graphs/main_graph.py` | Add/adjust a node only when it affects global lifecycle |
+| Domain selection changes | `apps/engine/backend/agent/agents/supervisor.py` | Map capability group to agent or recipe |
+| Task safety changes | `apps/engine/backend/agent/graphs/worker_graph.py` + execution policy | Keep validation before gateway invocation |
+| New engine tool | Python registry + policy + tool + gateway | All four are required |
+| New native desktop ability | Python registry/policy + `modules/ipc` + Tauri command + Win32 primitive | Python decides; Rust executes only the typed primitive |
 | New durable record | Contract + repository + migration + tests | Indexes follow canonical writes |
-| New memory behavior | `backend/memory/retrieval.py` or `backend/memory/validator.py` | Preserve provenance and deletion propagation |
+| New memory behavior | `apps/engine/backend/agent/memory/` | Preserve provenance and deletion propagation |
 | New user approval display | React approval view + C5 handling | Do not invent a second approval path |
 
 ## A safe pull-request-sized sequence
@@ -169,7 +186,7 @@ An agent is not a privileged service. It may ask for a tool through C4, propose 
 For a small read-only tool:
 
 1. Add contract and registry metadata.
-2. Implement and register the Python adapter.
+2. Implement and register the Python engine tool.
 3. Add policy and gateway tests.
 4. Add the tool to one agent/recipe allow-list.
 5. Add an integration test from C4 to C7.

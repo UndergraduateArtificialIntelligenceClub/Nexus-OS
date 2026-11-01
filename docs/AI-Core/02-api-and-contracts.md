@@ -17,13 +17,13 @@ For compactness, the object shapes below use TypeScript-like notation. The autho
 
 | ID | Contract | Produced by | Consumed by | Why it exists |
 |---|---|---|---|---|
-| C1 | `RequestEnvelope` | React through Rust desktop shell | Python backend / main graph | Stable user request and session boundary |
+| C1 | `RequestEnvelope` | React through `modules/ipc` / Tauri shell | Python FastAPI engine / main graph | Stable user request and session boundary |
 | C2 | `MainGraphState` | Main graph nodes | Main graph/checkpoint store | Recoverable orchestration state |
 | C3 | `TaskPacket` | Supervisor/dispatcher | Task worker | Bounded unit of work |
 | C4 | `ToolProposal` | Agent or deterministic recipe | Policy/approval service | Proposed operation without authority |
-| C5 | `ApprovalRequest` | Python policy service | React through desktop shell | Human decision bound to one proposal |
-| C6 | `ExecutionRequest` | Python worker after validation | Python execution gateway | Authorized, idempotent operation |
-| C7 | `ExecutionReceipt` | Python execution gateway | Worker/main graph/audit | Observed result or uncertainty |
+| C5 | `ApprovalRequest` | Python policy service | React through `modules/ipc` / Tauri shell | Human decision bound to one proposal |
+| C6 | `ExecutionRequest` | Python worker after validation | Python policy/gateway, then Python tool or typed Tauri command | Authorized, idempotent operation |
+| C7 | `ExecutionReceipt` | Python gateway after tool/native-command observation | Worker/main graph/audit | Observed result or uncertainty |
 | C8 | `MemoryProposal` | Main graph or Knowledge Agent | Memory validator | Candidate durable memory with provenance |
 | C9 | `AgentResult` | Domain subgraph/worker | Supervisor/main graph | Typed completion, evidence, or failure |
 
@@ -42,7 +42,7 @@ type RequestEnvelope = {
 };
 ~~~
 
-**Validation:** `request_id` and `session_id` must be non-empty UUIDs; attachments are references already registered by the Python backend; `user_input` is treated as untrusted content, not an instruction to a policy engine. The Rust shell only forwards C1 and may not add authority-bearing fields.
+**Validation:** `request_id` and `session_id` must be non-empty UUIDs; attachments are references already registered by the Python engine; `user_input` is treated as untrusted content, not an instruction to a policy engine. The Tauri shell transports C1 and may execute only a schema-approved native command issued by the Python gateway.
 
 ## C2 - MainGraphState
 
@@ -174,10 +174,10 @@ Each registry entry includes `tool_id`, `version`, description, capability group
 
 | Tool ID | Capability group | Input | Output | Default risk | Adapter owner |
 |---|---|---|---|---|---|
-| `system_diagnostics` | desktop.system | requested checks; scope | structured health observations | read_only | Python diagnostics adapter |
+| `system_diagnostics` | desktop.system | requested checks; scope | structured health observations | read_only | Python engine tool; Tauri/Win32 snapshot when needed |
 | `memory_save` | knowledge.memory | validated memory record reference | memory ID, index status | reversible_write | Memory repository |
 | `memory_lookup` | knowledge.memory | query, tiers, limit, permission scope | ranked memory references | read_only | Retrieval service |
-| `file_search` | desktop.files | approved roots, pattern, limit | file metadata references | read_only | Python filesystem adapter |
+| `file_search` | desktop.files | approved roots, pattern, limit | file metadata references | read_only | Python engine filesystem tool |
 | `document_read` | documents | artifact/file reference, extraction mode | text/evidence references | read_only | Python document adapter |
 | `document_create` | documents | artifact type, content reference, destination | artifact reference, receipt | reversible_write | Python document adapter |
 
@@ -185,19 +185,20 @@ Each registry entry includes `tool_id`, `version`, description, capability group
 
 ## Internal API surface
 
-The system does not need a public HTTP API for its first local deployment. Use a small local transport between the Rust shell and the Python backend, then typed Python service calls inside the backend:
+The system does not need a public HTTP API for its first local deployment. Use `modules/ipc` for typed React/Tauri/Python messages, local FastAPI for the engine boundary, and typed Python service calls inside the engine:
 
 | Surface | Direction | Contract |
 |---|---|---|
-| UI request | React -> Rust desktop shell -> Python backend -> graph | C1 |
-| Progress update | Python graph -> desktop shell -> React | request ID, task status, safe display text |
+| UI request | React -> Tauri -> `modules/ipc` -> Python FastAPI -> graph | C1 |
+| Progress update | Python graph -> `modules/ipc` -> Tauri -> React | request ID, task status, safe display text |
 | Worker dispatch | supervisor -> worker | C3 |
 | Proposal evaluation | worker -> policy | C4 |
-| Approval decision | React -> desktop shell -> Python policy | approval ID, decision, session proof |
-| Execution | Python worker -> Python gateway -> Python adapter | C6 / C7 |
+| Approval decision | React -> Tauri -> Python policy | approval ID, decision, session proof |
+| Engine tool execution | Python worker -> Python gateway -> Python tool | C6 / C7 |
+| Native window execution | Python worker -> Python gateway -> `modules/ipc` -> Tauri command -> Win32 | C6 / C7 |
 | Memory write | graph/agent -> validator -> repository | C8 |
 
-No UI response can mark a request approved unless the Python approval service verifies the session and the approval is still pending. The desktop shell simply transports the decision.
+No UI response can mark a request approved unless the Python approval service verifies the session and the approval is still pending. Tauri transports the decision and runs native commands only after receiving a valid typed request from the Python gateway.
 
 ## Error contract and lifecycle statuses
 
