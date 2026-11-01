@@ -12,7 +12,7 @@ export function App() {
 
   // Glue day: replace MockDesktopProvider with the real DesktopProvider.
   return (
-    <MockDesktopProvider canvasSize={canvasSize}>
+    <MockDesktopProvider canvasSize={canvasSize} persist>
       <div className="nexus-shell">
         <header className="nexus-header">
           {APP_NAME}
