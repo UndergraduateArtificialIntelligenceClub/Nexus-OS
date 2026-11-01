@@ -4,7 +4,7 @@ This is a compact implementation guide for the intelligence and orchestration la
 
 ## Source and confidence
 
-The supplied brief establishes the architecture's intent, named graph nodes, memory tiers, initial tools, and trust boundaries. It refers to an original diagram, but that image was not included with the available source. The diagrams and wiring in this pack therefore preserve the supplied names and principles while making the smallest practical implementation choices around them.
+The supplied brief establishes the architecture's intent, named graph nodes, memory tiers, initial tools, and trust boundaries. It refers to an original diagram, but that image was not included with the available source. The diagrams and wiring in this pack therefore preserve the supplied names and principles while making the smallest practical implementation choices around them. The confirmed implementation topology is now: Rust supplies the desktop shell only; Python owns the backend and every execution, policy, memory, and persistence responsibility.
 
 | Label | Meaning |
 |---|---|
@@ -19,6 +19,7 @@ The supplied brief establishes the architecture's intent, named graph nodes, mem
 3. Use [02 - API and contracts](02-api-and-contracts.md) while implementing modules or reviewing integration points.
 4. Use [04 - Implementation rules and roadmap](04-implementation-rules-and-roadmap.md) to sequence work and check non-negotiable rules.
 5. Keep [05 - Reference glossary](05-reference-glossary.md) open as the canonical vocabulary, inventory, and Mermaid source.
+6. Follow [06 - Extending NEXUS](06-extending-nexus.md) whenever you add a tool, module, or agent.
 
 The companion [diagram PDF](NEXUS-AI-CORE-Architecture-Diagrams.pdf) contains six zoomable, vector diagrams:
 
@@ -35,7 +36,7 @@ The companion [diagram PDF](NEXUS-AI-CORE-Architecture-Diagrams.pdf) contains si
 
 **Established**
 
-- React owns presentation and interaction; Rust owns desktop/runtime authority and the trusted execution boundary.
+- React owns presentation and interaction; Rust supplies the desktop shell/window host only; Python owns the backend and trusted execution boundary.
 - LangGraph owns orchestration and state transitions, including the main graph nodes named in the source.
 - The Supervisor, Desktop, Discovery, and Knowledge roles are the initial agent hierarchy.
 - Agents can propose actions; trusted code authorizes and performs side effects.
@@ -45,7 +46,7 @@ The companion [diagram PDF](NEXUS-AI-CORE-Architecture-Diagrams.pdf) contains si
 **Proposed**
 
 - Use typed JSON envelopes at module boundaries, a SQLite system-of-record, filesystem artifacts, local full-text/vector indexes, and a durable LangGraph checkpoint store.
-- Keep model selection behind one inference gateway and keep all native side effects behind Rust-owned adapters.
+- Keep model selection behind one Python inference gateway and keep all side effects behind Python-owned adapters and the Python execution gateway.
 - Treat this pack as the initial implementation target, then revise it through deliberate design decisions rather than quietly changing terms in code.
 
 ## Reading rules
