@@ -52,7 +52,7 @@ It only sees registry metadata and result summaries needed to coordinate. It doe
 
 `classify_desktop_intent -> resolve_target -> choose_recipe_or_tool -> build_proposal -> inspect_receipt -> summarize`
 
-Target resolution is deterministic where possible: application IDs, allowed roots, window IDs, and structured system observations replace guessed shell commands. The model may help interpret ambiguous language, but Rust adapters perform discovery and action.
+Target resolution is deterministic where possible: application IDs, allowed roots, window IDs, and structured system observations replace guessed shell commands. The model may help interpret ambiguous language, but Python backend adapters perform discovery and action. Rust remains the desktop shell only.
 
 **Discovery Agent**
 

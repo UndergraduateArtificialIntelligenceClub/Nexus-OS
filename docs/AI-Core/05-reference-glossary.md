@@ -30,7 +30,7 @@
 | Task Worker | Worker graph | Scope enforcement, proposal-to-receipt lifecycle |
 | Deterministic recipe | Code path | Known bounded operation with no open-ended planning |
 | Tool | Registered adapter operation | One typed capability with schema/policy metadata |
-| Trusted execution gateway | Rust-owned boundary | Sole authority to invoke adapters |
+| Trusted execution gateway | Python backend boundary | Sole authority to invoke Python adapters |
 
 ## Memory tiers
 
@@ -62,7 +62,7 @@
 | Checkpoint store | Serialized `MainGraphState` snapshots and write records | No for in-progress work |
 | Filesystem artifact root | Documents and other artifacts | No unless backed up |
 | Full-text/vector index | Retrieval projections keyed to canonical records | Yes |
-| Runtime memory | UI/session handles, M0, live adapter state | Yes; never the only durable record |
+| Runtime memory | Python backend session context, M0, live adapter state | Yes; never the only durable record |
 
 Canonical status values: `received`, `planning`, `running`, `awaiting_approval`, `reconciling`, `completed`, `failed`, `cancelled`. The gateway alone may report `unknown_outcome`.
 
@@ -70,7 +70,7 @@ Canonical status values: `received`, `planning`, `running`, `awaiting_approval`,
 
 | Source intent | Implementation reference |
 |---|---|
-| React presentation / Rust trusted runtime | [01](01-general-architecture.md), D1 |
+| React presentation / Rust desktop shell / Python backend | [01](01-general-architecture.md), D1 |
 | Main LangGraph and named nodes | [03](03-how-it-works.md), D2 |
 | Supervisor, Desktop, Discovery, Knowledge | [03](03-how-it-works.md), D3 |
 | Bounded worker and authorization | [02](02-api-and-contracts.md), D5 |
@@ -88,8 +88,9 @@ These diagrams are concise source equivalents of the vector PDF. They use the sa
 ~~~mermaid
 flowchart TB
   user[User] --> ui[React UI]
-  ui --> runtime[Rust runtime boundary]
-  runtime --> graph[Main LangGraph]
+  ui --> shell[Rust desktop shell]
+  shell --> backend[Python backend]
+  backend --> graph[Main LangGraph]
   graph --> supervisor[Supervisor]
   supervisor --> agents[Desktop Discovery Knowledge agents]
   agents --> worker[Task Worker]

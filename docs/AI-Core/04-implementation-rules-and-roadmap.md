@@ -12,35 +12,41 @@
 6. **Checkpoint before uncertainty.** Persist before dispatch, while awaiting approval, after an execution result, and before final synthesis.
 7. **State stays small and serializable.** Put artifacts, secrets, and large text behind references; validate every state update.
 8. **Memory writes are proposals.** Require provenance, value, sensitivity review, duplicate/conflict handling, and retention policy.
-9. **No policy in prompts.** Prompts can explain policy but the executable policy is typed data/code owned by the runtime.
+9. **No policy in prompts.** Prompts can explain policy but the executable policy is typed Python backend code/data.
 10. **One canonical vocabulary.** Do not rename a graph node, status, tool, or memory tier in code without updating [05 - Reference glossary](05-reference-glossary.md).
 11. **Local-first by default.** A basic installation works with local persistence and a configurable model provider; hosted services are opt-in adapters.
 12. **Audit enough to recover.** Record request, proposal, policy decision, approval outcome, execution request, receipt, and checkpoint links with safe diagnostics.
 
 ## Proposed repository map
 
-The exact language used for the LangGraph host is an **Open decision**. The following layout keeps that choice isolated. The examples use Python-style filenames for the graph service; preserve the module boundaries if another language is selected.
+The LangGraph host, tools, policy, memory, persistence, and trusted gateway are Python backend code. Rust is deliberately kept thin: it packages the desktop shell and hosts the UI, but does not implement backend authority.
 
 ~~~
 nexus-ai-core/
   apps/desktop/
     ui/                         # React presentation, approval and progress views
-    src-tauri/                  # Rust runtime, IPC, gateway, native adapters
+    src-tauri/                  # Rust/Tauri shell, window lifecycle, local transport only
   packages/contracts/
-    request.ts                  # C1/C2 types and validation schema
-    task.ts                     # C3/C9 types
-    execution.ts                # C4-C7 types
-    memory.ts                   # C8 and M0-M5 types
-  services/orchestrator/
-    graphs/main_graph.py        # Exact main graph and conditional edges
-    graphs/worker_graph.py      # Bounded task worker
-    agents/supervisor.py        # Planning/dependency subgraph
-    agents/desktop.py           # Desktop reasoning subgraph
-    agents/discovery.py         # Research/evidence subgraph
-    agents/knowledge.py         # Memory/retrieval subgraph
-    state/reducers.py           # Safe graph-state merge functions
-    models/gateway.py           # Structured model provider adapter
-  core/
+    schemas/                    # Versioned JSON Schema shared with the React UI
+      request.v1.json           # C1/C2 wire contract
+      task.v1.json              # C3/C9 wire contract
+      execution.v1.json         # C4-C7 wire contract
+      memory.v1.json            # C8 and M0-M5 wire contract
+  backend/
+    api/app.py                  # Local Python entrypoint for shell-to-backend requests
+    contracts/models.py         # Pydantic validation models and schema bindings
+    orchestration/
+      graphs/main_graph.py      # Exact main graph and conditional edges
+      graphs/worker_graph.py    # Bounded task worker
+      agents/supervisor.py      # Planning/dependency subgraph
+      agents/desktop.py         # Desktop reasoning subgraph
+      agents/discovery.py       # Research/evidence subgraph
+      agents/knowledge.py       # Memory/retrieval subgraph
+      state/reducers.py         # Safe graph-state merge functions
+      models/gateway.py         # Structured model provider adapter
+    execution/
+      gateway.py                # Python trusted execution gateway
+      adapters/                 # Python filesystem, desktop, document, service adapters
     registry/tools.json         # Versioned tool metadata
     policy/evaluator.py         # Deterministic policy decision
     approvals/service.py        # C5 creation, expiry, invalidation
@@ -53,7 +59,7 @@ nexus-ai-core/
     contracts/ graphs/ agents/ execution/ memory/ integration/
 ~~~
 
-**Ownership rule:** the UI imports generated contracts, never runtime internals; orchestration imports registry metadata and service interfaces, never Rust adapter handles; Rust adapters are reachable through the gateway only.
+**Ownership rule:** the UI imports generated contracts, never backend internals; the Rust shell only hosts/forwards UI traffic; Python orchestration imports registry metadata and service interfaces; Python adapters are reachable through the Python gateway only.
 
 ## Build in dependency order
 
@@ -70,7 +76,7 @@ Done when:
 
 ### Phase 1 - Trusted execution core
 
-Build: tool registry, policy evaluator, approval service, Rust gateway, execution receipts, `system_diagnostics`, and `file_search`.
+Build: Python tool registry, policy evaluator, approval service, execution gateway, execution receipts, `system_diagnostics`, and `file_search`.
 
 Done when:
 
@@ -143,7 +149,7 @@ Run deterministic unit and graph tests without a model provider. Use a fake stru
 | Decision | Why it matters | Safe default |
 |---|---|---|
 | LangGraph host language/process | Affects deployment and SDK usage, not contracts | Isolate in `services/orchestrator` |
-| IPC framework | Defines UI/runtime transport | Narrow typed Rust command surface |
+| Shell-to-backend transport | Defines UI/backend transport | Narrow typed Rust-shell-to-Python message surface |
 | Local embedding/index library | Controls retrieval performance and packaging | SQLite remains canonical; index is rebuildable |
 | Model provider defaults | Controls privacy/cost/availability | Local provider first, hosted adapter opt-in |
 | Approval policy UX | Shapes trust and interruption recovery | Show exact targets, impact, expiry, and cancel |

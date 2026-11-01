@@ -4,15 +4,15 @@
 
 ## The mental model
 
-NEXUS AI CORE is not one all-powerful assistant. It is a local-first coordinator that turns a user request into a bounded plan, asks specialized agents for reasoning or evidence, and sends only validated execution requests to trusted runtime code.
+NEXUS AI CORE is not one all-powerful assistant. It is a local-first coordinator that turns a user request into a bounded plan, asks specialized agents for reasoning or evidence, and sends only validated execution requests to trusted Python backend code.
 
-**Established:** React owns interaction and presentation; Rust owns desktop authority and trusted execution; LangGraph owns orchestration and graph state transitions. Agents propose actions, while a gateway validates and authorizes actual side effects.
+**Confirmed implementation decision:** React owns interaction and presentation; Rust supplies the desktop shell/window host only; Python owns the backend, including LangGraph orchestration, policies, tools, memory, persistence, and trusted execution. Agents propose actions, while the Python gateway validates and authorizes actual side effects.
 
 The short version is:
 
 ~~~
-React UI -> Rust runtime boundary -> LangGraph -> agents / workers -> tool proposal
-         <- trusted execution gateway <- policy + approval <- Rust-owned adapters
+React UI -> Rust desktop shell -> Python backend -> LangGraph -> agents / workers -> tool proposal
+                                               <- Python execution gateway <- policy + approval <- Python adapters
 ~~~
 
 See D1 in [the diagram PDF](NEXUS-AI-CORE-Architecture-Diagrams.pdf) for the complete boundary map.
@@ -22,13 +22,14 @@ See D1 in [the diagram PDF](NEXUS-AI-CORE-Architecture-Diagrams.pdf) for the com
 | Layer | Owner | Responsibility | Must not control | Logic |
 |---|---|---|---|---|
 | Presentation | React | Collect intent, show progress, render approval and results | Native side effects, policy decisions | Deterministic UI |
-| Runtime host | Rust | Session boundary, IPC, native handles, adapter ownership | Agent reasoning or user-facing wording | Deterministic |
+| Desktop shell | Rust/Tauri | Windowing, app packaging, frontend boot, minimal message forwarding | Session, policy, tools, adapters, or execution authority | Deterministic |
+| Backend entry | Python | Local API, session/request boundary, capability context | UI presentation or desktop window lifecycle | Deterministic |
 | Main orchestration | LangGraph | Route, checkpoint, dispatch, merge, recover | Direct OS/service calls | Mixed |
 | Coordination | Supervisor | Decompose and schedule bounded tasks | Grant permissions or invent tools | Mixed |
 | Domain agents | Desktop, Discovery, Knowledge | Produce typed plans, evidence, and proposals | Bypass worker or gateway | Mixed |
 | Task worker | Worker graph | Bind task scope, resolve inputs, request execution, reconcile result | Expand its own scope or authority | Mostly deterministic |
 | Capability system | Tool registry + policies | Describe available, allowed operations | Execute without gateway validation | Deterministic |
-| Trusted execution | Rust gateway + adapters | Validate, approve, execute, observe, receipt | Plan user goals or rewrite policy | Deterministic |
+| Trusted execution | Python gateway + adapters | Validate, approve, execute, observe, receipt | Plan user goals or rewrite policy | Deterministic |
 | Memory and retrieval | Memory service | Retrieve, rank, propose durable knowledge | Become a source of execution authority | Mixed retrieval |
 | Durable storage | SQLite, checkpoint store, filesystem, indexes | Keep records, artifacts, and recovery data | Interpret intent or authorize actions | Deterministic |
 | Model inference | Inference gateway | Supply structured reasoning behind contracts | Make permission decisions | Generative |
@@ -38,19 +39,19 @@ See D1 in [the diagram PDF](NEXUS-AI-CORE-Architecture-Diagrams.pdf) for the com
 
 **Proposed enforcement model**
 
-1. React calls a narrow Rust IPC surface with a `RequestEnvelope` (C1), never a native adapter.
-2. Rust creates or validates the session, request identity, and capability context before the graph begins.
+1. React sends C1 through the Rust desktop shell to the local Python backend; the shell forwards the message without interpreting it or gaining execution authority.
+2. Python creates or validates the session, request identity, and capability context before the graph begins.
 3. LangGraph and agents can emit `ToolProposal` objects (C4), but they do not receive adapter handles, OS tokens, or raw account credentials.
 4. The task worker turns a valid proposal into an `ExecutionRequest` (C6) only after schema validation, target resolution, policy evaluation, and any required approval.
-5. The Rust-owned trusted execution gateway is the sole path to an adapter. It binds approval to the exact proposal fingerprint, records a receipt, and returns an `ExecutionReceipt` (C7).
+5. The Python trusted execution gateway is the sole path to an adapter. It binds approval to the exact proposal fingerprint, records a receipt, and returns an `ExecutionReceipt` (C7).
 6. The graph trusts a receipt or an explicitly `unknown_outcome` status, not a model's claim that an action occurred.
 
 This shape makes an LLM useful without letting it turn prose into authority. A compromised or confused agent can make a bad proposal; it cannot directly press the destructive button.
 
 ## Request lifecycle
 
-1. The user acts in React. The UI sends a typed request through the Rust boundary.
-2. The runtime creates a session/request record and invokes the LangGraph main graph at `ingest_build_context`.
+1. The user acts in React. The Rust shell forwards the typed request to the local Python backend.
+2. The Python backend creates a session/request record and invokes the LangGraph main graph at `ingest_build_context`.
 3. The graph loads M0/M1 context and retrieves only relevant durable memories. It selects a route at `choose_route`.
 4. A safe, recognized operation can use `fast_direct_task`. Everything else goes through `supervisor_plan`, `validate_plan`, and bounded task dispatch.
 5. Workers call a domain subgraph or deterministic recipe. They return evidence, a result, or a `ToolProposal`.
@@ -74,7 +75,8 @@ Both paths converge on the same policy, approval, execution, receipt, and audit 
 | Data | Canonical owner | Durable location | Examples |
 |---|---|---|---|
 | UI-only state | React | In-memory UI state | Panel visibility, draft text |
-| Native capability context | Rust runtime | Session/approval records, not graph state | Window handle reference, scoped grant |
+| Desktop-shell state | Rust/Tauri | In-memory shell state only | Window lifecycle, frontend bootstrap |
+| Backend capability context | Python backend | Session/approval records, not graph state | Scoped capability grant, target references |
 | Graph state | LangGraph + checkpoint service | Checkpoint store | Route, task status, cursor |
 | Work records | Core repositories | SQLite | Requests, tasks, agent runs |
 | Side-effect evidence | Trusted gateway | SQLite + event records | Receipt, outcome, timestamps |
@@ -95,9 +97,9 @@ Errors travel as typed results, not as informal model prose. A worker reports a 
 
 The initial deployment can run on one desktop:
 
-- React UI and Rust runtime ship with the desktop application.
-- The orchestration service and model adapter run locally or communicate through an explicitly configured local/hosted provider boundary.
+- React UI and the thin Rust desktop shell ship with the desktop application.
+- A local Python backend runs the orchestration service, trusted gateway, adapters, memory, storage, and model gateway; models may still use an explicitly configured local/hosted provider boundary.
 - SQLite stores structured records; local filesystem storage holds artifacts; local full-text/vector indexes accelerate retrieval; the checkpoint store preserves graph progress.
 
-**Open decision:** select the language/process boundary for LangGraph and the exact embedded vector-index implementation. Do not let that choice change the contract or authority model.
+**Open decision:** select the local shell-to-Python transport and the exact embedded vector-index implementation. The Python backend ownership and authority model are fixed.
 

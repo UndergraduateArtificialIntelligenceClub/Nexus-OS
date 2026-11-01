@@ -5,6 +5,7 @@
 ## Contract principles
 
 - Every cross-module message is JSON-serializable, versioned, and attributable to a request.
+- JSON Schema is the shared wire contract; the Python backend validates it with Pydantic models, while React uses generated TypeScript types.
 - Graph state carries references and compact structured data, not secrets, files, native handles, or unlimited conversation text.
 - Only the trusted execution gateway accepts an `ExecutionRequest`. Agents produce `ToolProposal` objects.
 - Every external side effect ends in a receipt or `unknown_outcome`. “The model said it worked” is never a result type.
@@ -12,15 +13,17 @@
 
 ## Canonical contract map
 
+For compactness, the object shapes below use TypeScript-like notation. The authoritative backend implementation is Python/Pydantic and must emit/accept the same versioned JSON Schema.
+
 | ID | Contract | Produced by | Consumed by | Why it exists |
 |---|---|---|---|---|
-| C1 | `RequestEnvelope` | React through Rust | Main graph | Stable user request and session boundary |
+| C1 | `RequestEnvelope` | React through Rust desktop shell | Python backend / main graph | Stable user request and session boundary |
 | C2 | `MainGraphState` | Main graph nodes | Main graph/checkpoint store | Recoverable orchestration state |
 | C3 | `TaskPacket` | Supervisor/dispatcher | Task worker | Bounded unit of work |
 | C4 | `ToolProposal` | Agent or deterministic recipe | Policy/approval service | Proposed operation without authority |
-| C5 | `ApprovalRequest` | Policy service | React/Rust runtime | Human decision bound to one proposal |
-| C6 | `ExecutionRequest` | Worker after validation | Trusted execution gateway | Authorized, idempotent operation |
-| C7 | `ExecutionReceipt` | Trusted execution gateway | Worker/main graph/audit | Observed result or uncertainty |
+| C5 | `ApprovalRequest` | Python policy service | React through desktop shell | Human decision bound to one proposal |
+| C6 | `ExecutionRequest` | Python worker after validation | Python execution gateway | Authorized, idempotent operation |
+| C7 | `ExecutionReceipt` | Python execution gateway | Worker/main graph/audit | Observed result or uncertainty |
 | C8 | `MemoryProposal` | Main graph or Knowledge Agent | Memory validator | Candidate durable memory with provenance |
 | C9 | `AgentResult` | Domain subgraph/worker | Supervisor/main graph | Typed completion, evidence, or failure |
 
@@ -29,7 +32,7 @@
 ~~~ts
 type RequestEnvelope = {
   contract_version: "1";
-  request_id: string;          // UUID generated at the runtime boundary
+  request_id: string;          // UUID generated at the Python backend boundary
   session_id: string;
   parent_request_id?: string;  // for a follow-up or resume
   user_input: string;
@@ -39,7 +42,7 @@ type RequestEnvelope = {
 };
 ~~~
 
-**Validation:** `request_id` and `session_id` must be non-empty UUIDs; attachments are references already registered by Rust; `user_input` is treated as untrusted content, not an instruction to a policy engine.
+**Validation:** `request_id` and `session_id` must be non-empty UUIDs; attachments are references already registered by the Python backend; `user_input` is treated as untrusted content, not an instruction to a policy engine. The Rust shell only forwards C1 and may not add authority-bearing fields.
 
 ## C2 - MainGraphState
 
@@ -171,30 +174,30 @@ Each registry entry includes `tool_id`, `version`, description, capability group
 
 | Tool ID | Capability group | Input | Output | Default risk | Adapter owner |
 |---|---|---|---|---|---|
-| `system_diagnostics` | desktop.system | requested checks; scope | structured health observations | read_only | Rust diagnostics adapter |
+| `system_diagnostics` | desktop.system | requested checks; scope | structured health observations | read_only | Python diagnostics adapter |
 | `memory_save` | knowledge.memory | validated memory record reference | memory ID, index status | reversible_write | Memory repository |
 | `memory_lookup` | knowledge.memory | query, tiers, limit, permission scope | ranked memory references | read_only | Retrieval service |
-| `file_search` | desktop.files | approved roots, pattern, limit | file metadata references | read_only | Rust filesystem adapter |
-| `document_read` | documents | artifact/file reference, extraction mode | text/evidence references | read_only | Document adapter |
-| `document_create` | documents | artifact type, content reference, destination | artifact reference, receipt | reversible_write | Document adapter |
+| `file_search` | desktop.files | approved roots, pattern, limit | file metadata references | read_only | Python filesystem adapter |
+| `document_read` | documents | artifact/file reference, extraction mode | text/evidence references | read_only | Python document adapter |
+| `document_create` | documents | artifact type, content reference, destination | artifact reference, receipt | reversible_write | Python document adapter |
 
 **Proposed:** `memory_save` is internal-only: it accepts a record created by the validator, never unreviewed free-form agent text. Future tools use the same registry structure; their existence does not grant them to every agent.
 
 ## Internal API surface
 
-The system does not need a broad HTTP API for its first local deployment. Use typed in-process calls or Rust IPC for:
+The system does not need a public HTTP API for its first local deployment. Use a small local transport between the Rust shell and the Python backend, then typed Python service calls inside the backend:
 
 | Surface | Direction | Contract |
 |---|---|---|
-| UI request | React -> Rust -> graph | C1 |
-| Progress update | graph -> Rust -> React | request ID, task status, safe display text |
+| UI request | React -> Rust desktop shell -> Python backend -> graph | C1 |
+| Progress update | Python graph -> desktop shell -> React | request ID, task status, safe display text |
 | Worker dispatch | supervisor -> worker | C3 |
 | Proposal evaluation | worker -> policy | C4 |
-| Approval decision | React -> Rust -> policy | approval ID, decision, session proof |
-| Execution | worker -> gateway -> adapter | C6 / C7 |
+| Approval decision | React -> desktop shell -> Python policy | approval ID, decision, session proof |
+| Execution | Python worker -> Python gateway -> Python adapter | C6 / C7 |
 | Memory write | graph/agent -> validator -> repository | C8 |
 
-No UI response can mark a request approved unless the Rust layer verifies the session and the approval is still pending.
+No UI response can mark a request approved unless the Python approval service verifies the session and the approval is still pending. The desktop shell simply transports the decision.
 
 ## Error contract and lifecycle statuses
 
