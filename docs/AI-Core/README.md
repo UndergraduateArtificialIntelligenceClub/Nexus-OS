@@ -4,7 +4,7 @@ This is a compact implementation guide for the intelligence and orchestration la
 
 ## Source and confidence
 
-The supplied brief establishes the architecture's intent, named graph nodes, memory tiers, initial tools, and trust boundaries. It refers to an original diagram, but that image was not included with the available source. The diagrams and wiring in this pack therefore preserve the supplied names and principles while making the smallest practical implementation choices around them. The confirmed implementation topology is now: Rust supplies the desktop shell only; Python owns the backend and every execution, policy, memory, and persistence responsibility.
+The supplied brief establishes the architecture's intent, named graph nodes, memory tiers, initial tools, and trust boundaries. It refers to an original diagram, but that image was not included with the available source. The diagrams and wiring in this pack therefore preserve the supplied names and principles while making the smallest practical implementation choices around them. The current repository is `nexus-os`: Python owns backend authority, agent logic, policy, memory, and persistence; Rust/Tauri supplies the desktop shell and performs only typed native window primitives requested through the approved Python path.
 
 | Label | Meaning |
 |---|---|
@@ -36,7 +36,7 @@ The companion [diagram PDF](NEXUS-AI-CORE-Architecture-Diagrams.pdf) contains si
 
 **Established**
 
-- React owns presentation and interaction; Rust supplies the desktop shell/window host only; Python owns the backend and trusted execution boundary.
+- React owns presentation and interaction; Rust/Tauri owns the desktop shell, sidecar lifecycle, and typed Win32 primitives; Python owns backend authority, LangGraph, agents, policy, memory, and persistence.
 - LangGraph owns orchestration and state transitions, including the main graph nodes named in the source.
 - The Supervisor, Desktop, Discovery, and Knowledge roles are the initial agent hierarchy.
 - Agents can propose actions; trusted code authorizes and performs side effects.
@@ -46,7 +46,7 @@ The companion [diagram PDF](NEXUS-AI-CORE-Architecture-Diagrams.pdf) contains si
 **Proposed**
 
 - Use typed JSON envelopes at module boundaries, a SQLite system-of-record, filesystem artifacts, local full-text/vector indexes, and a durable LangGraph checkpoint store.
-- Keep model selection behind one Python inference gateway and keep all side effects behind Python-owned adapters and the Python execution gateway.
+- Keep model selection behind the Python engine; keep all side effects behind Python policy/gateway checks, with native window primitives crossing `modules/ipc` to the Rust desktop core.
 - Treat this pack as the initial implementation target, then revise it through deliberate design decisions rather than quietly changing terms in code.
 
 ## Reading rules

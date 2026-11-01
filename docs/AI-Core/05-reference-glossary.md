@@ -29,8 +29,8 @@
 | Knowledge Agent | Agent subgraph | Retrieval, consolidation, memory proposals |
 | Task Worker | Worker graph | Scope enforcement, proposal-to-receipt lifecycle |
 | Deterministic recipe | Code path | Known bounded operation with no open-ended planning |
-| Tool | Registered adapter operation | One typed capability with schema/policy metadata |
-| Trusted execution gateway | Python backend boundary | Sole authority to invoke Python adapters |
+| Tool | Registered Python engine operation | One typed capability with schema/policy metadata |
+| Trusted execution gateway | Python engine boundary | Sole authority to invoke a Python tool or issue a typed Tauri native command |
 
 ## Memory tiers
 
@@ -70,7 +70,7 @@ Canonical status values: `received`, `planning`, `running`, `awaiting_approval`,
 
 | Source intent | Implementation reference |
 |---|---|
-| React presentation / Rust desktop shell / Python backend | [01](01-general-architecture.md), D1 |
+| React shell / Rust Tauri native core / Python FastAPI engine | [01](01-general-architecture.md), D1 |
 | Main LangGraph and named nodes | [03](03-how-it-works.md), D2 |
 | Supervisor, Desktop, Discovery, Knowledge | [03](03-how-it-works.md), D3 |
 | Bounded worker and authorization | [02](02-api-and-contracts.md), D5 |
@@ -88,16 +88,18 @@ These diagrams are concise source equivalents of the vector PDF. They use the sa
 ~~~mermaid
 flowchart TB
   user[User] --> ui[React UI]
-  ui --> shell[Rust desktop shell]
-  shell --> backend[Python backend]
-  backend --> graph[Main LangGraph]
+  ui --> shell[Rust Tauri shell]
+  shell --> ipc[modules ipc]
+  ipc --> engine[Python FastAPI engine]
+  engine --> graph[Main LangGraph]
   graph --> supervisor[Supervisor]
   supervisor --> agents[Desktop Discovery Knowledge agents]
   agents --> worker[Task Worker]
   worker --> proposal[ToolProposal]
   proposal --> policy[Policy and approval]
-  policy --> gateway[Trusted execution gateway]
-  gateway --> adapters[Native and service adapters]
+  policy --> gateway[Python policy and execution gateway]
+  gateway --> engineTools[Python engine tools]
+  gateway --> native[Tauri commands and Win32]
   graph --> memory[Memory retrieval]
   memory --> stores[SQLite artifacts indexes]
   graph --> model[Model inference gateway]
@@ -182,8 +184,8 @@ flowchart LR
   policy -->|approval needed| approval[ApprovalRequest]
   approval -->|approved and unexpired| request[ExecutionRequest]
   policy -->|allowed| request
-  request --> gateway[Trusted execution gateway]
-  gateway --> adapter[Registered adapter]
+  request --> gateway[Python policy and execution gateway]
+  gateway --> adapter[Python tool or Tauri command]
   adapter --> receipt[ExecutionReceipt]
   receipt --> reconcile[Worker reconciliation]
   reconcile --> graph[Main graph]

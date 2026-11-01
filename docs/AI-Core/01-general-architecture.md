@@ -6,13 +6,13 @@
 
 NEXUS AI CORE is not one all-powerful assistant. It is a local-first coordinator that turns a user request into a bounded plan, asks specialized agents for reasoning or evidence, and sends only validated execution requests to trusted Python backend code.
 
-**Confirmed implementation decision:** React owns interaction and presentation; Rust supplies the desktop shell/window host only; Python owns the backend, including LangGraph orchestration, policies, tools, memory, persistence, and trusted execution. Agents propose actions, while the Python gateway validates and authorizes actual side effects.
+**Confirmed implementation decision:** React owns interaction and presentation. Python/FastAPI owns backend authority: LangGraph orchestration, agents, policies, memory, persistence, and approval decisions. Rust/Tauri owns the desktop shell, FastAPI sidecar lifecycle, Win32 observation, and typed native window primitives. Agents propose actions; the Python gateway validates and authorizes them before a Python engine tool or typed Rust command can run.
 
 The short version is:
 
 ~~~
-React UI -> Rust desktop shell -> Python backend -> LangGraph -> agents / workers -> tool proposal
-                                               <- Python execution gateway <- policy + approval <- Python adapters
+React UI -> Tauri shell -> modules/ipc -> Python FastAPI engine -> LangGraph -> agents / workers
+                                             <- Python policy/gateway <- engine tools OR typed IPC -> Rust Win32 commands
 ~~~
 
 See D1 in [the diagram PDF](NEXUS-AI-CORE-Architecture-Diagrams.pdf) for the complete boundary map.
@@ -22,14 +22,15 @@ See D1 in [the diagram PDF](NEXUS-AI-CORE-Architecture-Diagrams.pdf) for the com
 | Layer | Owner | Responsibility | Must not control | Logic |
 |---|---|---|---|---|
 | Presentation | React | Collect intent, show progress, render approval and results | Native side effects, policy decisions | Deterministic UI |
-| Desktop shell | Rust/Tauri | Windowing, app packaging, frontend boot, minimal message forwarding | Session, policy, tools, adapters, or execution authority | Deterministic |
-| Backend entry | Python | Local API, session/request boundary, capability context | UI presentation or desktop window lifecycle | Deterministic |
+| Presentation shell | React | Desktop canvas, widgets, taskbar, gestures, approval display | Session, policy, native commands, or execution authority | Deterministic UI |
+| Native desktop core | Rust/Tauri | Windowing, sidecar lifecycle, Win32 hooks, typed native commands, cached topology | Intent interpretation, policy, model, memory, or plan ownership | Deterministic |
+| Backend entry | Python FastAPI | Local API, session/request boundary, capability context | UI presentation or desktop window lifecycle | Deterministic |
 | Main orchestration | LangGraph | Route, checkpoint, dispatch, merge, recover | Direct OS/service calls | Mixed |
 | Coordination | Supervisor | Decompose and schedule bounded tasks | Grant permissions or invent tools | Mixed |
 | Domain agents | Desktop, Discovery, Knowledge | Produce typed plans, evidence, and proposals | Bypass worker or gateway | Mixed |
 | Task worker | Worker graph | Bind task scope, resolve inputs, request execution, reconcile result | Expand its own scope or authority | Mostly deterministic |
 | Capability system | Tool registry + policies | Describe available, allowed operations | Execute without gateway validation | Deterministic |
-| Trusted execution | Python gateway + adapters | Validate, approve, execute, observe, receipt | Plan user goals or rewrite policy | Deterministic |
+| Trusted execution | Python policy/gateway + engine tools + typed Rust commands | Validate, approve, execute, observe, receipt | Let native code infer intent or rewrite policy | Deterministic |
 | Memory and retrieval | Memory service | Retrieve, rank, propose durable knowledge | Become a source of execution authority | Mixed retrieval |
 | Durable storage | SQLite, checkpoint store, filesystem, indexes | Keep records, artifacts, and recovery data | Interpret intent or authorize actions | Deterministic |
 | Model inference | Inference gateway | Supply structured reasoning behind contracts | Make permission decisions | Generative |
@@ -39,19 +40,19 @@ See D1 in [the diagram PDF](NEXUS-AI-CORE-Architecture-Diagrams.pdf) for the com
 
 **Proposed enforcement model**
 
-1. React sends C1 through the Rust desktop shell to the local Python backend; the shell forwards the message without interpreting it or gaining execution authority.
+1. React sends C1 through `modules/ipc` and the Tauri shell to the local FastAPI engine. The shell forwards typed payloads; it does not interpret intent.
 2. Python creates or validates the session, request identity, and capability context before the graph begins.
 3. LangGraph and agents can emit `ToolProposal` objects (C4), but they do not receive adapter handles, OS tokens, or raw account credentials.
 4. The task worker turns a valid proposal into an `ExecutionRequest` (C6) only after schema validation, target resolution, policy evaluation, and any required approval.
-5. The Python trusted execution gateway is the sole path to an adapter. It binds approval to the exact proposal fingerprint, records a receipt, and returns an `ExecutionReceipt` (C7).
+5. The Python policy/gateway is the sole authority path to a tool. It either invokes a Python engine tool or issues a typed `modules/ipc` request to a Rust Tauri command. It binds approval to the exact proposal fingerprint, records a receipt, and returns an `ExecutionReceipt` (C7).
 6. The graph trusts a receipt or an explicitly `unknown_outcome` status, not a model's claim that an action occurred.
 
 This shape makes an LLM useful without letting it turn prose into authority. A compromised or confused agent can make a bad proposal; it cannot directly press the destructive button.
 
 ## Request lifecycle
 
-1. The user acts in React. The Rust shell forwards the typed request to the local Python backend.
-2. The Python backend creates a session/request record and invokes the LangGraph main graph at `ingest_build_context`.
+1. The user acts in React. The Tauri shell forwards the typed request over the shared IPC contract to the local Python engine.
+2. The Python engine creates a session/request record and invokes the LangGraph main graph at `ingest_build_context`.
 3. The graph loads M0/M1 context and retrieves only relevant durable memories. It selects a route at `choose_route`.
 4. A safe, recognized operation can use `fast_direct_task`. Everything else goes through `supervisor_plan`, `validate_plan`, and bounded task dispatch.
 5. Workers call a domain subgraph or deterministic recipe. They return evidence, a result, or a `ToolProposal`.
@@ -75,8 +76,8 @@ Both paths converge on the same policy, approval, execution, receipt, and audit 
 | Data | Canonical owner | Durable location | Examples |
 |---|---|---|---|
 | UI-only state | React | In-memory UI state | Panel visibility, draft text |
-| Desktop-shell state | Rust/Tauri | In-memory shell state only | Window lifecycle, frontend bootstrap |
-| Backend capability context | Python backend | Session/approval records, not graph state | Scoped capability grant, target references |
+| Desktop/native state | `src-tauri/src/state.rs` + `modules/window-state` | Cached Win32 topology and unified `WindowState` snapshots | Window handle/geometry observations |
+| Backend capability context | Python engine | Session/approval records, not graph state | Scoped capability grant, target references |
 | Graph state | LangGraph + checkpoint service | Checkpoint store | Route, task status, cursor |
 | Work records | Core repositories | SQLite | Requests, tasks, agent runs |
 | Side-effect evidence | Trusted gateway | SQLite + event records | Receipt, outcome, timestamps |
@@ -97,9 +98,10 @@ Errors travel as typed results, not as informal model prose. A worker reports a 
 
 The initial deployment can run on one desktop:
 
-- React UI and the thin Rust desktop shell ship with the desktop application.
-- A local Python backend runs the orchestration service, trusted gateway, adapters, memory, storage, and model gateway; models may still use an explicitly configured local/hosted provider boundary.
+- `apps/shell/frontend` provides the React presentation shell and internal widgets; `src-tauri` hosts the desktop core and starts the FastAPI sidecar.
+- `apps/engine/backend` runs the Python orchestration service, policy/gateway, agent tools, memory, database access, and model-provider routing.
+- `modules/ipc` carries typed shell-to-engine requests; `modules/window-state` defines the unified internal/external window contract; `modules/storage` owns shared SQLite schema/migrations.
 - SQLite stores structured records; local filesystem storage holds artifacts; local full-text/vector indexes accelerate retrieval; the checkpoint store preserves graph progress.
 
-**Open decision:** select the local shell-to-Python transport and the exact embedded vector-index implementation. The Python backend ownership and authority model are fixed.
+**Open decision:** finalize JSON-RPC versus local HTTP details for shell-to-engine transport and choose the embedded vector-index implementation. Python backend authority is fixed; Rust stays a typed native desktop executor rather than an agent backend.
 

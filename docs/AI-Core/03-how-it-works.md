@@ -52,7 +52,7 @@ It only sees registry metadata and result summaries needed to coordinate. It doe
 
 `classify_desktop_intent -> resolve_target -> choose_recipe_or_tool -> build_proposal -> inspect_receipt -> summarize`
 
-Target resolution is deterministic where possible: application IDs, allowed roots, window IDs, and structured system observations replace guessed shell commands. The model may help interpret ambiguous language, but Python backend adapters perform discovery and action. Rust remains the desktop shell only.
+Target resolution is deterministic where possible: application IDs, allowed roots, `WindowState` IDs, and structured desktop observations replace guessed shell commands. The Python engine performs discovery, policy, and action selection. When a real window needs inspection or movement, the Python gateway sends a typed `modules/ipc` request to a Tauri command, which performs the narrow Win32 primitive and returns an observation/receipt.
 
 **Discovery Agent**
 
