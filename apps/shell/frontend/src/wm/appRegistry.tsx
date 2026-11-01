@@ -7,10 +7,10 @@
 import type { ComponentType } from 'react'
 
 import { ClockWidget } from '@/internal-apps/clock/frontend/src/App'
-import { FilesWidget } from '@/internal-apps/files/frontend/src/App'
-import { NotesWidget } from '@/internal-apps/notes/frontend/src/App'
-import { SystemMonitorWidget } from '@/internal-apps/system-monitor/frontend/src/App'
-import { TerminalWidget } from '@/internal-apps/terminal/frontend/src/App'
+import { FilesApp } from '@/internal-apps/files/frontend/src/App'
+import { NotesApp } from '@/internal-apps/notes/frontend/src/App'
+import { SystemMonitorApp } from '@/internal-apps/system-monitor/frontend/src/App'
+import { TerminalApp } from '@/internal-apps/terminal/frontend/src/App'
 import type { Size } from '@/wm/snap'
 
 export interface AppDefinition {
@@ -19,6 +19,12 @@ export interface AppDefinition {
   Component: ComponentType
   defaultSize: Size
 }
+
+// The shell's apps take grid props; free windows show them at their 2x2 size.
+const NotesWidget = () => <NotesApp instanceId="wm.notes" size="2x2" mode="widget" />
+const FilesWidget = () => <FilesApp instanceId="wm.files" size="2x2" mode="widget" />
+const TerminalWidget = () => <TerminalApp instanceId="wm.terminal" size="2x2" mode="widget" />
+const SystemMonitorWidget = () => <SystemMonitorApp instanceId="wm.system-monitor" size="2x2" mode="widget" />
 
 function SettingsPlaceholder() {
   return (
