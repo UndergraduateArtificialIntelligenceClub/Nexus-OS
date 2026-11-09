@@ -114,8 +114,8 @@ Use a temporary dev harness or the first `WorkspaceCanvas` implementation to ver
 - [x] Minimize retains the window in session
 - [x] Close removes the window
 - [x] `hydrate(getSnapshot())` preserves session state
-- [ ] `npx tsc --noEmit` passes
-- [ ] `npm run build` passes
+- [x] `npx tsc --noEmit` passes
+- [x] `npm run build` passes
 
 #### Divy's 50% — status
 
@@ -123,8 +123,8 @@ D0-D1 and D0-D2 are implemented; B1–B3 are implemented on the mock store.
 
 | Deliverable | Output |
 |-------------|--------|
-| Mock store | `wm/mockDesktopStore.ts` (framework-free, enforces focus/z-order invariants) + `wm/MockDesktopProvider.tsx` (`useSyncExternalStore`, wraps `DesktopStoreContextProvider`) |
-| Contract validation | `wm/mockDesktopStore.test.ts` — one test per D0-D2 checklist item; Yash's real store should pass the same behavioural checks |
+| Mock store | `wm/mockDesktopStore.ts` re-exports Yash's `wm/desktopStore.ts`; `wm/MockDesktopProvider.tsx` still wraps the store for Divy's UI path |
+| Contract validation | `wm/mockDesktopStore.test.ts` — parameterized over real + mock; both pass the same D0-D2 checks |
 | `arrange` | Fully implemented (not a no-op). Taskbar uses `wm/arrange.ts`, which only calls `moveWindow`/`resizeWindow`, so the real store does not need to know the canvas size |
 | Snap helpers | `wm/snap.ts` + `wm/snap.test.ts` |
 | UI | `WindowFrame`, `WorkspaceCanvas`, `Taskbar`, `SnapPreview`, `wm/appRegistry.tsx` |
@@ -136,6 +136,8 @@ Behaviour notes for glue day:
 - Release snaps to the 12×8 grid; left/right canvas edge snaps to a half; top edge sets `fullscreen` without touching x/y/width/height (so restore returns to the prior size). Hold Alt for free placement.
 - `setMode(id, 'minimized')` on the focused window hands focus to the next topmost visible window; `focusApp` on a minimized window is a no-op for focus. Taskbar restore calls `setMode(id, 'windowed')` then `focusApp(id)`.
 - Restoring a minimized window always returns it to `windowed` (the API has no "previous mode" field).
+
+**Real store (Yash A1):** `wm/desktopStore.ts` + `wm/DesktopProvider.tsx` implement the frozen API with hardening (finite geometry, mode validation, unique ids after hydrate, zIndex renumbering). Props match `MockDesktopProvider` (`canvasSize`, `persist`, `storage`, `initialSession`), so glue day is a one-line swap in `App.tsx`. Prefer `useDesktopStoreHandle()` for non-React IPC callers (A3).
 
 **Divy Day 0 output:** a mock-backed UI development environment. After this is merged, Divy starts B1–B3 while Yash independently starts the real store/persistence.
 
@@ -286,11 +288,21 @@ Also expose read state to UI: `windows`, `focusedId`, `activeWorkspaceId` (via h
 4. Provide `DesktopProvider` Divy will swap in on glue day
 
 ### Output
-- [ ] Real provider + hook implementing the frozen API
-- [ ] Script/test: `openApp` ×2 → length 2; `focusApp` → single focused
-- [ ] Divy can switch import from mock → real with no prop renames
+- [x] Real provider + hook implementing the frozen API
+- [x] Script/test: `openApp` ×2 → length 2; `focusApp` → single focused
+- [x] Divy can switch import from mock → real with no prop renames
 
 **Acceptance:** API-compatible with mock; no UI required.
+
+**Delivered:**
+| File | Role |
+|------|------|
+| `wm/desktopStore.ts` | Framework-free production store (`createDesktopStore`) |
+| `wm/DesktopProvider.tsx` | React provider + `useDesktopStoreHandle()` |
+| `wm/mockDesktopStore.ts` | Thin re-export of the real store (Divy imports unchanged) |
+| `hooks/useDesktopState.ts` | Legacy wrapper around `useDesktopStore()` |
+| `wm/mockDesktopStore.test.ts` | Shared contract suite (real + mock) + A1 hardening |
+| `wm/DesktopProvider.test.tsx` | Provider re-render + handle context |
 
 ---
 
@@ -457,6 +469,8 @@ Also expose read state to UI: `windows`, `focusedId`, `activeWorkspaceId` (via h
 | `modules/window-state/types.ts` | Yash (Day 0 shared) |
 | `apps/shell/.../wm/DesktopStoreAPI.ts` | Yash (Day 0 freeze) |
 | `apps/shell/.../wm/DesktopStoreContext.tsx` | Yash (Day 0 freeze) |
+| `apps/shell/.../wm/desktopStore.ts` | Yash (A1) |
+| `apps/shell/.../wm/DesktopProvider.tsx` | Yash (A1) |
 | `apps/shell/.../wm/MockDesktopProvider.tsx` | Divy (remaining Day 0) |
 | `hooks/useDesktopState.ts` | Yash |
 | `hooks/useIPC.ts` + Rust persist | Yash |
