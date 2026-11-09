@@ -318,10 +318,19 @@ Also expose read state to UI: `windows`, `focusedId`, `activeWorkspaceId` (via h
 4. Test by calling store actions in a small harness / Vitest / manual console — no drag needed
 
 ### Output
-- [ ] Persist + restore path documented
-- [ ] Test: scripted open/move/focus → save → hydrate → state equal
+- [x] Persist + restore path documented
+- [x] Test: scripted open/move/focus → save → hydrate → state equal
 
 **Acceptance:** Restart (or hydrate round-trip) restores windows without any WindowFrame.
+
+**Delivered (A2):**
+| File | Role |
+|------|------|
+| `wm/sessionPersistence.ts` | Debounced localStorage save/load (Divy; reused by real provider) |
+| `wm/DesktopProvider.tsx` | Boot restore + persister + `useDesktopStoreHandle().flush()` |
+| `wm/sessionPersistence.test.ts` | Parameterized over real + mock stores |
+| `wm/DesktopProvider.test.tsx` | Provider remount restore, flush, persist=false |
+| `modules/window-state/README.md` | Persist path docs |
 
 ---
 

@@ -184,9 +184,12 @@ export function createSessionPersister(
   let disposed = false
 
   function flush() {
-    if (timer === null) return
-    clearTimeout(timer)
-    timer = null
+    if (disposed) return
+    if (timer !== null) {
+      clearTimeout(timer)
+      timer = null
+    }
+    // Always write the current snapshot (A3 persist_workspace / pagehide).
     saveSession(store.getSnapshot(), storage)
   }
 

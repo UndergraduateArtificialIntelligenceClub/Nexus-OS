@@ -1,13 +1,19 @@
 /**
  * Checkpoints "Save opened and focused app" and "Restore open and focused apps
  * on launch". Mirrors the WM plan's A2 test: scripted open/move/focus -> save ->
- * relaunch (new store) -> state equal.
+ * relaunch (new store) -> state equal. Parameterized over real + mock stores.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { DesktopSession } from '@/types/WindowState'
-import { createMockDesktopStore, createSeedSession } from './mockDesktopStore'
+import {
+  createDesktopStore,
+  createSeedSession,
+  type DesktopStore,
+  type DesktopStoreOptions,
+} from './desktopStore'
+import { createMockDesktopStore } from './mockDesktopStore'
 import {
   clearSavedSession,
   createSessionPersister,
@@ -20,6 +26,13 @@ import {
   type SessionStorage,
 } from './sessionPersistence'
 
+type StoreFactory = (options?: DesktopStoreOptions) => DesktopStore
+
+const factories: Array<[string, StoreFactory]> = [
+  ['real', createDesktopStore],
+  ['mock', createMockDesktopStore],
+]
+
 function memoryStorage(): SessionStorage & { data: Map<string, string> } {
   const data = new Map<string, string>()
   return {
@@ -31,8 +44,8 @@ function memoryStorage(): SessionStorage & { data: Map<string, string> } {
 }
 
 /** Simulates relaunch: a brand-new store booted from whatever is saved. */
-function relaunch(storage: SessionStorage) {
-  return createMockDesktopStore({ initialSession: loadSession(storage) ?? undefined })
+function relaunch(create: StoreFactory, storage: SessionStorage) {
+  return create({ initialSession: loadSession(storage) ?? undefined })
 }
 
 describe('saveSession / loadSession', () => {
@@ -118,7 +131,7 @@ describe('parseSession', () => {
   })
 })
 
-describe('createSessionPersister', () => {
+describe.each(factories)('createSessionPersister (%s)', (_label, create) => {
   beforeEach(() => {
     vi.useFakeTimers()
   })
@@ -128,7 +141,7 @@ describe('createSessionPersister', () => {
 
   it('saves opened apps and the focused app after the debounce', () => {
     const storage = memoryStorage()
-    const store = createMockDesktopStore()
+    const store = create()
     createSessionPersister(store, { storage })
 
     const id = store.openApp('nexus.terminal')
@@ -143,7 +156,7 @@ describe('createSessionPersister', () => {
   it('coalesces a burst of changes into one write', () => {
     const storage = memoryStorage()
     const setItem = vi.spyOn(storage, 'setItem')
-    const store = createMockDesktopStore()
+    const store = create()
     createSessionPersister(store, { storage })
 
     const id = store.openApp('nexus.notes')
@@ -157,7 +170,7 @@ describe('createSessionPersister', () => {
 
   it('flush writes pending changes immediately; dispose flushes then stops', () => {
     const storage = memoryStorage()
-    const store = createMockDesktopStore()
+    const store = create()
     const persister = createSessionPersister(store, { storage })
 
     store.openApp('nexus.files')
@@ -174,7 +187,7 @@ describe('createSessionPersister', () => {
   })
 })
 
-describe('restore on launch', () => {
+describe.each(factories)('restore on launch (%s)', (_label, create) => {
   beforeEach(() => {
     vi.useFakeTimers()
   })
@@ -184,7 +197,7 @@ describe('restore on launch', () => {
 
   it('scripted open/move/focus -> save -> relaunch restores the same session', () => {
     const storage = memoryStorage()
-    const store = createMockDesktopStore()
+    const store = create()
     const persister = createSessionPersister(store, { storage })
 
     const terminal = store.openApp('nexus.terminal')
@@ -195,7 +208,7 @@ describe('restore on launch', () => {
     persister.dispose()
 
     const before: DesktopSession = store.getSnapshot()
-    const after = relaunch(storage).getSnapshot()
+    const after = relaunch(create, storage).getSnapshot()
 
     expect(after).toEqual(before)
     expect(after.focusedId).toBe(notes)
@@ -209,24 +222,24 @@ describe('restore on launch', () => {
 
   it('restores minimized and fullscreen modes', () => {
     const storage = memoryStorage()
-    const store = createMockDesktopStore()
+    const store = create()
     const [a, b] = store.getSnapshot().windows.map((w) => w.id)
     store.setMode(a, 'minimized')
     store.setMode(b, 'fullscreen')
     saveSession(store.getSnapshot(), storage)
 
-    const restored = relaunch(storage).getSnapshot()
+    const restored = relaunch(create, storage).getSnapshot()
     expect(restored.windows.find((w) => w.id === a)!.mode).toBe('minimized')
     expect(restored.windows.find((w) => w.id === b)!.mode).toBe('fullscreen')
   })
 
   it('restores an empty desktop if every app was closed', () => {
     const storage = memoryStorage()
-    const store = createMockDesktopStore()
+    const store = create()
     for (const w of store.getSnapshot().windows) store.closeApp(w.id)
     saveSession(store.getSnapshot(), storage)
 
-    const restored = relaunch(storage).getSnapshot()
+    const restored = relaunch(create, storage).getSnapshot()
     expect(restored.windows).toEqual([])
     expect(restored.focusedId).toBeNull()
   })
@@ -234,7 +247,7 @@ describe('restore on launch', () => {
   it('falls back to the seed session when the saved data is corrupt', () => {
     const storage = memoryStorage()
     storage.setItem(SESSION_STORAGE_KEY, 'garbage')
-    expect(relaunch(storage).getSnapshot()).toEqual(createMockDesktopStore().getSnapshot())
+    expect(relaunch(create, storage).getSnapshot()).toEqual(create().getSnapshot())
   })
 
   it('repairs invariants in a saved session (two windows marked focused)', () => {
@@ -243,7 +256,7 @@ describe('restore on launch', () => {
     const broken = { ...seed, windows: seed.windows.map((w) => ({ ...w, focused: true })) }
     saveSession(broken, storage)
 
-    const restored = relaunch(storage).getSnapshot()
+    const restored = relaunch(create, storage).getSnapshot()
     expect(restored.windows.filter((w) => w.focused)).toHaveLength(1)
     expect(restored.focusedId).toBe(restored.windows.find((w) => w.focused)!.id)
   })

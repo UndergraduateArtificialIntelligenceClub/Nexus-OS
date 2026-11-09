@@ -1,9 +1,10 @@
 /**
- * Production desktop store provider (WM-A / Task A1).
+ * Production desktop store provider (WM-A / Tasks A1 + A2).
  *
  * Drop-in replacement for MockDesktopProvider: same props, same
- * DesktopStoreAPI surface via useDesktopStore(). Persistence wiring is
- * marked for A2; the store handle context is for A3 IPC.
+ * DesktopStoreAPI surface via useDesktopStore(). Persistence uses
+ * createSessionPersister (localStorage). The store handle exposes flush()
+ * for A3 persist_workspace.
  */
 
 import {
@@ -25,6 +26,7 @@ import {
   createSessionPersister,
   getDefaultStorage,
   loadSession,
+  type SessionPersister,
   type SessionStorage,
 } from '@/wm/sessionPersistence'
 import type { Size } from '@/wm/snap'
@@ -44,18 +46,25 @@ interface DesktopProviderProps extends PropsWithChildren {
   storage?: SessionStorage | null
 }
 
-const DesktopStoreHandleContext = createContext<DesktopStore | null>(null)
+/** Raw store + immediate persist flush for callers outside the render cycle (A3 IPC). */
+export interface DesktopStoreHandle {
+  store: DesktopStore
+  /** Write any pending debounced save immediately. No-op when persist is off. */
+  flush(): void
+}
+
+const DesktopStoreHandleContext = createContext<DesktopStoreHandle | null>(null)
 
 /**
- * Raw store handle for callers outside the render cycle (A3 IPC).
+ * Store handle for callers outside the render cycle (A3 IPC).
  * Prefer `useDesktopStore()` for UI.
  */
-export function useDesktopStoreHandle(): DesktopStore {
-  const store = useContext(DesktopStoreHandleContext)
-  if (!store) {
+export function useDesktopStoreHandle(): DesktopStoreHandle {
+  const handle = useContext(DesktopStoreHandleContext)
+  if (!handle) {
     throw new Error('useDesktopStoreHandle must be used within a DesktopProvider')
   }
-  return store
+  return handle
 }
 
 export function DesktopProvider({
@@ -83,10 +92,16 @@ export function DesktopProvider({
     }),
   )
 
+  const persisterRef = useRef<SessionPersister | null>(null)
+
   // A2 persistence: reuse createSessionPersister against the real store.
   useEffect(() => {
-    if (!persist) return
+    if (!persist) {
+      persisterRef.current = null
+      return
+    }
     const persister = createSessionPersister(store, { storage: resolvedStorage })
+    persisterRef.current = persister
     const onHide = () => persister.flush()
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') persister.flush()
@@ -97,8 +112,19 @@ export function DesktopProvider({
       window.removeEventListener('pagehide', onHide)
       document.removeEventListener('visibilitychange', onVisibility)
       persister.dispose()
+      if (persisterRef.current === persister) persisterRef.current = null
     }
   }, [persist, store, resolvedStorage])
+
+  const handle = useMemo<DesktopStoreHandle>(
+    () => ({
+      store,
+      flush() {
+        persisterRef.current?.flush()
+      },
+    }),
+    [store],
+  )
 
   const session = useSyncExternalStore(store.subscribe, store.getState, store.getState)
 
@@ -123,7 +149,7 @@ export function DesktopProvider({
   )
 
   return (
-    <DesktopStoreHandleContext.Provider value={store}>
+    <DesktopStoreHandleContext.Provider value={handle}>
       <DesktopStoreContextProvider value={value}>{children}</DesktopStoreContextProvider>
     </DesktopStoreHandleContext.Provider>
   )
