@@ -1,10 +1,10 @@
 /**
- * Production desktop store provider (WM-A / Tasks A1 + A2).
+ * Production desktop store provider (WM-A / Tasks A1–A3).
  *
  * Drop-in replacement for MockDesktopProvider: same props, same
  * DesktopStoreAPI surface via useDesktopStore(). Persistence uses
  * createSessionPersister (localStorage). The store handle exposes flush()
- * for A3 persist_workspace.
+ * for persist_workspace; useDesktopIPCBridge syncs IPC under Tauri.
  */
 
 import {
@@ -30,6 +30,10 @@ import {
   type SessionStorage,
 } from '@/wm/sessionPersistence'
 import type { Size } from '@/wm/snap'
+import {
+  useDesktopIPCBridge,
+  type DesktopIPCBridgeOptions,
+} from '@/wm/useDesktopIPCBridge'
 
 interface DesktopProviderProps extends PropsWithChildren {
   /** Starting session. Defaults to the Notes + Files seed. Read once on mount. */
@@ -44,6 +48,11 @@ interface DesktopProviderProps extends PropsWithChildren {
   persist?: boolean
   /** Storage used when `persist` is on. Defaults to localStorage. Read once on mount. */
   storage?: SessionStorage | null
+  /**
+   * IPC bridge options. Pass `false` to disable Tauri sync (tests).
+   * DEV still exposes `window.nexusIPC` unless disabled.
+   */
+  ipc?: DesktopIPCBridgeOptions | false
 }
 
 /** Raw store + immediate persist flush for callers outside the render cycle (A3 IPC). */
@@ -72,6 +81,7 @@ export function DesktopProvider({
   canvasSize,
   persist = true,
   storage,
+  ipc,
   children,
 }: DesktopProviderProps) {
   const [resolvedStorage] = useState(() => (storage === undefined ? getDefaultStorage() : storage))
@@ -125,6 +135,13 @@ export function DesktopProvider({
     }),
     [store],
   )
+
+  // A3: Tauri snapshot sync + ipc-request listener; DEV console nexusIPC.
+  const bridgeOptions = useMemo<DesktopIPCBridgeOptions>(
+    () => (ipc === false ? { isTauri: () => false, enableDevConsole: false } : (ipc ?? {})),
+    [ipc],
+  )
+  useDesktopIPCBridge(handle, bridgeOptions)
 
   const session = useSyncExternalStore(store.subscribe, store.getState, store.getState)
 

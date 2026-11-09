@@ -346,10 +346,20 @@ Also expose read state to UI: `windows`, `focusedId`, `activeWorkspaceId` (via h
 4. Fix Rust `ipc_dispatch` compile for persist/load if needed
 
 ### Output
-- [ ] `get_desktop_state` JSON matches store after scripted opens
-- [ ] Contract documented for Agent team
+- [x] `get_desktop_state` JSON matches store after scripted opens
+- [x] Contract documented for Agent team
 
 **Acceptance:** IPC works against store alone.
+
+**Delivered (A3):**
+| File | Role |
+|------|------|
+| `modules/ipc/contract.ts` | Single typed contract + `focus_window` + `WM_IPC_COMMANDS` |
+| `wm/desktopIPC.ts` | Store-backed dispatcher (validate → act → respond) |
+| `wm/useDesktopIPCBridge.ts` | Tauri sync/listen + DEV `window.nexusIPC` |
+| `wm/DesktopProvider.tsx` | Mounts the bridge (`ipc` prop for tests) |
+| `src-tauri/src/commands/window.rs` | Cache-backed `get_desktop_state`, event-forwarded mutations (source only; cargo unverified) |
+| `wm/desktopIPC.test.ts` / `useDesktopIPCBridge.test.tsx` | Vitest coverage |
 
 ---
 
@@ -428,7 +438,7 @@ Also expose read state to UI: `windows`, `focusedId`, `activeWorkspaceId` (via h
 5. Sign-off checklist
 
 ### Output
-- [ ] Mock removed from production path
+- [x] Mock removed from production path (`App.tsx` uses `DesktopProvider`)
 - [ ] Full demo on real store + persist
 - [ ] Sign-off checklist green
 
