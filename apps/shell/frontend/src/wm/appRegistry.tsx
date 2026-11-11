@@ -11,6 +11,7 @@ import { FilesWidget } from '@/internal-apps/files/frontend/src/App'
 import { NotesWidget } from '@/internal-apps/notes/frontend/src/App'
 import { SystemMonitorWidget } from '@/internal-apps/system-monitor/frontend/src/App'
 import { TerminalWidget } from '@/internal-apps/terminal/frontend/src/App'
+import { WindowManagerWidget } from '@/internal-apps/window-manager/frontend/src/App'
 import type { Size } from '@/wm/snap'
 
 export interface AppDefinition {
@@ -40,6 +41,12 @@ export const APP_REGISTRY: readonly AppDefinition[] = [
     defaultSize: { width: 480, height: 320 },
   },
   { appId: 'nexus.clock', title: 'Clock', Component: ClockWidget, defaultSize: { width: 336, height: 160 } },
+  {
+    appId: 'nexus.window-manager',
+    title: 'Window Manager',
+    Component: WindowManagerWidget,
+    defaultSize: { width: 760, height: 500 },
+  },
   { appId: 'nexus.settings', title: 'Settings', Component: SettingsPlaceholder, defaultSize: { width: 480, height: 360 } },
 ]
 
