@@ -5,6 +5,7 @@ import { FilesApp } from '@/internal-apps/files/frontend/src/App'
 import { NotesApp } from '@/internal-apps/notes/frontend/src/App'
 import { SystemMonitorApp } from '@/internal-apps/system-monitor/frontend/src/App'
 import { TerminalApp } from '@/internal-apps/terminal/frontend/src/App'
+import { TimerApp } from '@/internal-apps/timer/frontend/src/App'
 import { SIZE_ORDER, type Size } from '@/wm/layout'
 import type { AppDef } from './types'
 
@@ -58,6 +59,16 @@ export const APPS = {
     fullscreen: false,
     phase: 'mvp',
     component: SystemMonitorApp,
+  },
+  timer: {
+    label: 'timer',
+    glyph: '[t]',
+    sizes: ['1x1', '2x1'],
+    defaultSize: '1x1',
+    aliases: ['timer', 'countdown', 'stopwatch'],
+    fullscreen: false,
+    phase: 'later',
+    component: TimerApp,
   },
 } satisfies Record<string, AppDef>
 

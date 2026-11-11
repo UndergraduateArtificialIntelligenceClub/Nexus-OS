@@ -10,23 +10,15 @@
   font-family: var(--sans);
 }
 
-/* Stacking, back to front. Chrome positions itself; only the stage needs lifting. */
-.nx-desktop {
-  --z-stage: 1;
-  --z-fullscreen: 20;
-  --z-flight: 25;
-  --z-menubar: 30;
-  --z-dock: 35;
-  --z-agent: 40;
-  --z-spotlight: 50;
-}
+/* Stacking: the z-ladder is the library's token ladder (ui/tokens/tokens.css).
+   Chrome positions itself; only the stage needs lifting. */
 
 .nx-dots {
   position: fixed;
   inset: 0;
   width: 100%;
   height: 100%;
-  z-index: 0;
+  z-index: var(--z-dots);
   pointer-events: none;
 }
 

@@ -1,7 +1,7 @@
 /* Floating chrome: menu bar, dock, fullscreen host, Spotlight, avatar and bubble.
-   Only these are glass (.nx-glass in ui/ui.css); widgets stay paper. Glass never nests:
-   a popover inside glass uses a solid surface instead (backdrop blur can't see past
-   its glass parent). */
+   Only these are glass (.nx-glass in ui/components/components.css); widgets stay
+   paper. Glass never nests: a popover inside glass uses a solid surface instead
+   (backdrop blur can't see past its glass parent). */
 
 /* Quiet hover tint shared by chrome buttons. */
 .nx-desktop {
@@ -585,17 +585,8 @@
   pointer-events: auto;
 }
 
-.nx-bubble-rest {
-  visibility: hidden;
-}
-
 .nx-bubble[data-error] {
   border-color: var(--ink);
-}
-
-.nx-bubble-mark {
-  font-family: var(--mono);
-  font-weight: 600;
 }
 
 /* Sit on the side that faces the middle of the screen. */
