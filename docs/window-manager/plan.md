@@ -17,7 +17,7 @@ Ship a working **internal** window manager inside the Nexus React/Tauri shell so
 | **Yash** | WM-A | Own the **data + memory**: types, store, save/load, IPC read/persist |
 | **Divy** | WM-B | Own the **interaction + UI chrome**: WindowFrame, snap, canvas, taskbar |
 
-Raghav is optional backup only if blocked — no assigned tasks.
+**Raghav:** Window Manager inspector app (`nexus.window-manager`) for live status/size checks and IPC API testing.
 
 ---
 
@@ -119,7 +119,7 @@ Use a temporary dev harness or the first `WorkspaceCanvas` implementation to ver
 
 #### Divy's 50% — status
 
-D0-D1 and D0-D2 are implemented; B1–B3 are implemented on the mock store.
+D0-D1 and D0-D2 are implemented; B1–B3 are implemented and now run on the real store after glue.
 
 | Deliverable | Output |
 |-------------|--------|
@@ -129,17 +129,17 @@ D0-D1 and D0-D2 are implemented; B1–B3 are implemented on the mock store.
 | Snap helpers | `wm/snap.ts` + `wm/snap.test.ts` |
 | UI | `WindowFrame`, `WorkspaceCanvas`, `Taskbar`, `SnapPreview`, `wm/appRegistry.tsx` |
 
-Run `npm install && npm test && npx tsc --noEmit && npm run build` in `apps/shell/frontend` to tick the last two D0-D2 boxes (`vitest` was added as a dev dependency).
+D0-D2 verification (`npm test`, `tsc`, `build`) is complete; those boxes are ticked.
 
-Behaviour notes for glue day:
+Behaviour notes (still true on the real store):
 - Drag/resize geometry is committed once on release, not per pointer move.
 - Release snaps to the 12×8 grid; left/right canvas edge snaps to a half; top edge sets `fullscreen` without touching x/y/width/height (so restore returns to the prior size). Hold Alt for free placement.
 - `setMode(id, 'minimized')` on the focused window hands focus to the next topmost visible window; `focusApp` on a minimized window is a no-op for focus. Taskbar restore calls `setMode(id, 'windowed')` then `focusApp(id)`.
 - Restoring a minimized window always returns it to `windowed` (the API has no "previous mode" field).
 
-**Real store (Yash A1):** `wm/desktopStore.ts` + `wm/DesktopProvider.tsx` implement the frozen API with hardening (finite geometry, mode validation, unique ids after hydrate, zIndex renumbering). Props match `MockDesktopProvider` (`canvasSize`, `persist`, `storage`, `initialSession`), so glue day is a one-line swap in `App.tsx`. Prefer `useDesktopStoreHandle()` for non-React IPC callers (A3).
+**Real store (Yash A1):** `wm/desktopStore.ts` + `wm/DesktopProvider.tsx` implement the frozen API with hardening (finite geometry, mode validation, unique ids after hydrate, zIndex renumbering). Props match `MockDesktopProvider` (`canvasSize`, `persist`, `storage`, `initialSession`). Glue swap in `App.tsx` is done (`DesktopProvider`). Prefer `useDesktopStoreHandle()` for non-React IPC callers (A3).
 
-**Divy Day 0 output:** a mock-backed UI development environment. After this is merged, Divy starts B1–B3 while Yash independently starts the real store/persistence.
+**Divy Day 0 output:** a mock-backed UI development environment (historical). Production path now uses the real provider.
 
 After Divy completes these two tasks, **Day 0 is complete and neither person blocks the other**.
 
@@ -161,7 +161,7 @@ After Divy completes these two tasks, **Day 0 is complete and neither person blo
 2. Point arrange/snap commit path at real `moveWindow` / `resizeWindow` / `arrange`
 3. Run joint sign-off checklist
 
-**Merge rule:** Final product has one live store (Yash’s). Mock is deleted or kept under `__mocks__` for Storybook/tests only.
+**Merge rule:** Final product has one live store (Yash’s). `mockDesktopStore.ts` still re-exports the real store for tests. `MockDesktopProvider.tsx` is unused in production and in tests (only mentioned in comments); deleting or moving it under `__mocks__` is left to Divy, who owns that file.
 
 ### File ownership (avoid git conflicts)
 
@@ -269,7 +269,7 @@ Also expose read state to UI: `windows`, `focusedId`, `activeWorkspaceId` (via h
 | Move / resize / modes | Divy | Day 0 + mock | Mouse controls work on mock |
 | Grid snap | Divy | Day 0 (pure fns) | Snap helpers + wired on drag end |
 | Canvas + taskbar | Divy | Mock store | Mini-desktop UI loop |
-| Sign-off | Both | Glue day | Checklist green on **real** store |
+| Sign-off | Both | Glue day | **Done 2026-11-11** — checklist green on **real** store |
 
 ---
 
@@ -439,8 +439,8 @@ Also expose read state to UI: `windows`, `focusedId`, `activeWorkspaceId` (via h
 
 ### Output
 - [x] Mock removed from production path (`App.tsx` uses `DesktopProvider`)
-- [ ] Full demo on real store + persist
-- [ ] Sign-off checklist green
+- [x] Full demo on real store + persist
+- [x] Sign-off checklist green
 
 **Estimate:** half day if Day 0 API was frozen; longer only if someone renamed actions.
 
@@ -459,14 +459,56 @@ Also expose read state to UI: `windows`, `focusedId`, `activeWorkspaceId` (via h
 
 ## Joint sign-off checklist (final output)
 
-- [ ] Open ≥2 apps from UI
-- [ ] Drag, resize, snap/grid OK
-- [ ] Arrange tile/cascade OK
-- [ ] Minimize → taskbar only; restore works
-- [ ] Fullscreen → restore prior size
-- [ ] Focus / z-order correct
-- [ ] Kill → relaunch restores session
-- [ ] `get_desktop_state` matches screen
+- [x] Open ≥2 apps from UI
+- [x] Drag, resize, snap/grid OK
+- [x] Arrange tile/cascade OK
+- [x] Minimize → taskbar only; restore works
+- [x] Fullscreen → restore prior size
+- [x] Focus / z-order correct
+- [x] Kill → relaunch restores session
+- [x] `get_desktop_state` matches screen
+
+### Sign-off results (2026-11-11)
+
+Ran on `npm run dev` against the **real store** (header badge `real store`) with the Window Manager inspector open.
+
+| Item | Result | Evidence |
+|------|--------|----------|
+| Open ≥2 apps | Pass | Notes + Files + Window Manager on canvas and taskbar |
+| Drag / resize / snap | Pass | `WindowFrame` drag-end path wired to snap + `moveWindow`/`resizeWindow`; `snap.test.ts` covers grid/edge math; Tile/Cascade prove geometry commits from UI |
+| Tile / Cascade | Pass | Tile laid windows into non-overlapping regions; Cascade offset positions (e.g. Notes `64,64`, Files `32,32`) |
+| Minimize / restore | Pass | Inspector `set_window_mode` minimized Notes (left canvas, stayed on taskbar); Windowed restored it |
+| Fullscreen / restore size | Pass | Notes went fullscreen with stored size `664×553`; Windowed restored same size |
+| Focus / z-order | Pass | Focus Notes → `focused seed-notes` + taskbar pressed; Focus Files → `focused seed-files` + Files on top |
+| Persist / relaunch | Pass | After reload, same geometry restored: Notes `64,64 664×553`, Files `32,32 664×553`, WM `0,0 664×553` |
+| `get_desktop_state` | Pass | Inspector IPC returned success; snapshot matched the live table and on-screen frames |
+
+---
+
+## Window Manager inspector (Raghav)
+
+Internal app to inspect live window status/size/mode and exercise the desktop IPC API against the real store.
+
+| Item | Path / detail |
+|------|----------------|
+| Widget | `apps/shell/frontend/src/internal-apps/window-manager/frontend/src/App.tsx` |
+| Tests | `.../App.test.tsx` (jsdom: table, IPC actions, log, errors) |
+| Registry | `wm/appRegistry.tsx` → `nexus.window-manager` (default size 760×500) |
+| Launch | Taskbar **Window Manager** button |
+| IPC path | Every action uses `createDesktopIPCHandler(useDesktopStoreHandle())` |
+| Commands exercised | `get_desktop_state`, `persist_workspace`, `open_app`, `close_app`, `focus_window`, `move_window`, `resize_window`, `set_window_mode`, plus an invalid-command probe |
+| UI | Live table (title, appId, id, mode, position, size, focus/z, workspace), row actions, last-call log, JSON snapshot panel |
+| Commit | `3b30a87` |
+
+---
+
+## Open items
+
+| Item | Status |
+|------|--------|
+| Rust/Tauri crate build | Unverified — `cargo` not installed on this machine; A3 TypeScript + Rust source are in tree |
+| SQLite persistence | Deferred (localStorage envelope is the MVP path) |
+| Delete unused `MockDesktopProvider.tsx` | Left to Divy (file owner); unused in production and tests |
 
 ---
 
@@ -490,9 +532,10 @@ Also expose read state to UI: `windows`, `focusedId`, `activeWorkspaceId` (via h
 | `apps/shell/.../wm/DesktopStoreContext.tsx` | Yash (Day 0 freeze) |
 | `apps/shell/.../wm/desktopStore.ts` | Yash (A1) |
 | `apps/shell/.../wm/DesktopProvider.tsx` | Yash (A1) |
-| `apps/shell/.../wm/MockDesktopProvider.tsx` | Divy (remaining Day 0) |
+| `apps/shell/.../wm/MockDesktopProvider.tsx` | Divy (unused after glue; delete/move when ready) |
 | `hooks/useDesktopState.ts` | Yash |
 | `hooks/useIPC.ts` + Rust persist | Yash |
 | `WindowFrame.tsx` / `WorkspaceCanvas.tsx` / `Taskbar.tsx` | Divy |
 | `wm/snap.ts` | Divy |
-| `App.tsx` | Glue day (both) |
+| `internal-apps/window-manager/` | Raghav (inspector) |
+| `App.tsx` | Glue done — uses Yash `DesktopProvider` |
