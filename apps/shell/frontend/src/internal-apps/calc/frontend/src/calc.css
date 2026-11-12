@@ -7,6 +7,7 @@
   gap: var(--s-sm);
   color: var(--ink);
   min-height: 0;
+  overflow: hidden;
 }
 
 .w-calc-display {
@@ -16,7 +17,8 @@
   gap: var(--s-sm);
   border-bottom: 1px solid var(--line);
   padding-bottom: var(--s-xs);
-  min-height: 30px;
+  min-height: 24px;
+  flex-shrink: 0;
 }
 
 .w-calc-expr {
@@ -45,15 +47,18 @@
   min-height: 0;
 }
 
+/* Five equal rows that shrink with the slot: a 1x1 card fits the whole keypad. */
 .w-calc-pad {
   flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: repeat(5, 1fr);
   gap: var(--s-xs);
 }
 
 .w-calc-key {
-  min-height: 26px;
+  min-height: 12px;
   padding: 2px;
   border: 1px solid var(--line);
   border-radius: var(--radius-key);

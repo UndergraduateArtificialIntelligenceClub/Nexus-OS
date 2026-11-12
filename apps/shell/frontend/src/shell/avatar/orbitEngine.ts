@@ -133,6 +133,20 @@ const SHELLS: Array<[radius: number, parallax: number]> = [
   [0.38, 1.3],
 ]
 
+// The pilot light: when fully dormant the orb leaves this faint ember behind, so
+// it never vanishes from the desk outright. Cells are [dx, dy, glyph level].
+const EMBER: Array<[number, number, number]> = [
+  [0, 0, 4],
+  [0, -1, 2],
+  [0, 1, 2],
+  [-1, 0, 2],
+  [1, 0, 2],
+  [-1, -1, 1],
+  [1, -1, 1],
+  [-1, 1, 1],
+  [1, 1, 1],
+]
+
 export function startOrbit(canvas: HTMLCanvasElement, opts: OrbitOptions = {}): OrbitHandle {
   const noop: OrbitHandle = { setState() {}, setLevel() {}, dispose() {} }
   const ctx = canvas.getContext('2d', { alpha: true })
@@ -209,6 +223,22 @@ export function startOrbit(canvas: HTMLCanvasElement, opts: OrbitOptions = {}): 
     R = Math.min(W, H) * 0.3
     atlas = buildAtlas(cw, ch, px, accentRamp, inkRamp)
     prev = new Float32Array(cols * rows)
+    // A resize during dormancy must redraw the ember — no rAF is running then.
+    if (dormant && pres > 0.999) drawEmber()
+  }
+
+  /** Draws the dormant pilot light (once; CSS breathes its opacity). */
+  const drawEmber = () => {
+    if (cols < 3 || rows < 3) return
+    const cx = cols >> 1
+    const cy = rows >> 1
+    for (const [dx, dy, g] of EMBER) {
+      const i = cx + dx
+      const j = cy + dy
+      if (i < 0 || j < 0 || i >= cols || j >= rows) continue
+      // Hue row 0 (accent), glyph level g.
+      ctx.drawImage(atlas, g * cw, (g - 1) * ch, cw, ch, i * cw, j * ch, cw, ch)
+    }
   }
 
   const onMove = (e: PointerEvent) => {
@@ -275,11 +305,12 @@ export function startOrbit(canvas: HTMLCanvasElement, opts: OrbitOptions = {}): 
       rot.set([Math.cos(ax), Math.sin(ax), Math.cos(ay), Math.sin(ay), Math.cos(az), Math.sin(az)], k * 6)
     }
 
-    // Fully dissolved: the canvas is clear and the orb sleeps (no rAF) until woken.
+    // Fully dissolved: the orb sleeps (no rAF) leaving only its pilot-light ember.
     if (d > 0.999) {
       if (!blank) {
         ctx.clearRect(0, 0, W, H)
         prev.fill(0)
+        if (dormant) drawEmber()
         blank = true
       }
       return

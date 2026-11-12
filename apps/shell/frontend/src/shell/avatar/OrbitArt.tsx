@@ -89,12 +89,15 @@ export function OrbitArt({ status, reduced }: OrbitArtProps) {
   const dissolve = useCallback(() => {
     dormantRef.current = true
     orbRef.current?.setState('dormant')
+    // The engine leaves a pilot-light ember; CSS breathes it while dormant.
+    canvasRef.current?.setAttribute('data-dormant', '')
   }, [])
 
   /** Cancel the dissolve and (if dissolved) re-form at the current status. */
   const wake = useCallback(() => {
     window.clearTimeout(timerRef.current)
     dormantRef.current = false
+    canvasRef.current?.removeAttribute('data-dormant')
     orbRef.current?.setState(liveRef.current)
     timerRef.current = window.setTimeout(dissolve, DORMANT_AFTER_MS)
   }, [dissolve])
@@ -103,6 +106,7 @@ export function OrbitArt({ status, reduced }: OrbitArtProps) {
   useEffect(() => {
     liveRef.current = STATE[status]
     const canvas = canvasRef.current
+    canvas?.removeAttribute('data-dormant') // rebuilt: start awake
     if (!canvas || !canvas.getContext('2d')) return // test DOM: no painting, stay decorative
     const ramps = readRamps(canvas)
     const orb = startOrbit(canvas, {
@@ -131,15 +135,17 @@ export function OrbitArt({ status, reduced }: OrbitArtProps) {
     return () => window.clearTimeout(timerRef.current)
   }, [status, wake])
 
-  // Pointer-down or focus anywhere on the avatar wakes it too.
+  // Pointer-down, focus or merely resting the pointer on the avatar wakes it too.
   useEffect(() => {
     const onActivity = (e: Event) => {
       if (e.target instanceof Element && e.target.closest('.nx-agent')) wake()
     }
     window.addEventListener('pointerdown', onActivity, true)
+    window.addEventListener('pointerover', onActivity, true)
     window.addEventListener('focusin', onActivity, true)
     return () => {
       window.removeEventListener('pointerdown', onActivity, true)
+      window.removeEventListener('pointerover', onActivity, true)
       window.removeEventListener('focusin', onActivity, true)
     }
   }, [wake])

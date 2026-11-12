@@ -66,6 +66,46 @@
   transition: none;
 }
 
+/* Dragging a widget: freeze the glide, lift the card, hide the chips. The grab
+   cursor sits on the slot; interactive elements inside keep their own cursors. */
+.nx-slot[data-grab] {
+  cursor: grab;
+}
+
+.nx-slot[data-dragging] {
+  transition: none;
+  z-index: 10;
+  filter: drop-shadow(0 12px 20px rgb(0 0 0 / 0.4));
+}
+
+.nx-slot[data-dragging] .nx-slot-chips {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* The drop preview: where the dragged widget will land. */
+.nx-drop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  border: 1.5px dashed var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.nx-drop[data-kind='swap'] {
+  opacity: 0.45;
+}
+
+.nx-drop[data-kind='blocked'] {
+  border-color: var(--line);
+  background: transparent;
+  opacity: 0.4;
+}
+
 /* --- App instances (one stable div per app, moved between hosts) --- */
 
 /* Hover controls on a widget's slot: size, fullscreen, minimize, close. They sit

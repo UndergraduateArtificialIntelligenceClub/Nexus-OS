@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { COLS, ROWS, SIZE_DIMS } from './layout'
-import { createDesktopStore, defaultDesktop, loadDesktop } from './desktopStore'
+import { COLS, ROWS, SIZE_DIMS, type Size } from './layout'
+import { createDesktopStore, defaultDesktop, loadDesktop, type AppInstance } from './desktopStore'
 
 // The desk itself: multi-widget layouts, packing, minimize/fullscreen semantics,
 // resize snapping and the localStorage round-trip.
@@ -151,6 +151,67 @@ describe('close and tidy', () => {
     expect(store.tidy()).toBeTruthy()
     const after = store.getState().instances.map((i) => i.appId)
     expect([...after].sort()).toEqual([...before].sort())
+  })
+})
+
+describe('move', () => {
+  const mk = (
+    id: string,
+    appId: AppInstance['appId'],
+    size: Size,
+    col: number,
+    row: number,
+    mode: AppInstance['mode'] = 'widget',
+  ): AppInstance => ({ id, appId, size, col, row, mode })
+
+  it('moves a widget to a free cell and focuses it', () => {
+    const store = createDesktopStore({ instances: [mk('t', 'timer', '1x1', 0, 0)], focusedId: null })
+    expect(store.move('timer', 3, 2)).toContain('moved')
+    expect(store.find('timer')).toMatchObject({ col: 3, row: 2 })
+    expect(store.getState().focusedId).toBe('t')
+  })
+
+  it('swaps with an equal-size widget', () => {
+    const store = createDesktopStore({
+      instances: [mk('t', 'timer', '1x1', 0, 0), mk('m', 'monitor', '1x1', 2, 0)],
+      focusedId: null,
+    })
+    expect(store.move('timer', 2, 0)).toContain('swapped')
+    expect(store.find('timer')).toMatchObject({ col: 2, row: 0 })
+    expect(store.find('monitor')).toMatchObject({ col: 0, row: 0 })
+  })
+
+  it('makes a lone different-size widget step aside instead', () => {
+    const store = createDesktopStore({
+      instances: [mk('t', 'timer', '1x1', 0, 0), mk('m', 'monitor', '2x1', 2, 0), mk('n', 'notes', '2x1', 0, 1)],
+      focusedId: null,
+    })
+    expect(store.move('timer', 2, 0)).toContain('stepped aside')
+    expect(store.find('timer')).toMatchObject({ col: 2, row: 0 })
+    expect(store.find('monitor')).toMatchObject({ col: 0, row: 0 }) // the vacated spot fits a 2x1
+  })
+
+  it('refuses when the target would overlap several widgets', () => {
+    const store = createDesktopStore({
+      instances: [mk('n', 'notes', '2x1', 0, 0), mk('m', 'monitor', '1x1', 2, 0), mk('c', 'clock', '1x1', 3, 0)],
+      focusedId: null,
+    })
+    expect(store.move('notes', 2, 0)).toContain('no room')
+    expect(store.find('notes')).toMatchObject({ col: 0, row: 0 })
+  })
+
+  it('clamps off-board targets and answers honestly for locked widgets', () => {
+    const store = createDesktopStore({
+      instances: [mk('t', 'timer', '1x1', 0, 0), mk('n', 'notes', '2x1', 2, 0)],
+      focusedId: null,
+    })
+    expect(store.move('timer', 99, -4)).toContain('moved')
+    expect(store.find('timer')).toMatchObject({ col: COLS - 1, row: 0 })
+    store.minimize('timer')
+    expect(store.move('timer', 0, 0)).toContain('minimized')
+    store.restore('timer')
+    store.fullscreen('notes')
+    expect(store.move('notes', 0, 0)).toContain('fullscreen')
   })
 })
 

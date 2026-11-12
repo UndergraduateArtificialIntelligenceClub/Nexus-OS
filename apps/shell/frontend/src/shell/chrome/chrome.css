@@ -586,6 +586,25 @@
   pointer-events: none;
 }
 
+/* Dormant: the engine leaves a static pilot-light ember; CSS breathes it slowly. */
+.nx-orb[data-dormant] {
+  animation: nx-ember 5.6s ease-in-out infinite;
+}
+
+@keyframes nx-ember {
+  0%,
+  100% {
+    opacity: 0.9;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.nx-desktop[data-reduced] .nx-orb[data-dormant] {
+  animation: none;
+}
+
 .nx-bubble {
   position: absolute;
   width: max-content;

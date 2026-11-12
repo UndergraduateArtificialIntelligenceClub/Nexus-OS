@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { COLS, ROWS, SIZE_DIMS, SIZE_ORDER, fits, findSlot, isSize, offset, pack, span } from './layout'
+import { COLS, ROWS, SIZE_DIMS, SIZE_ORDER, fits, findSlot, intersecting, isSize, offset, pack, snapToCell, span } from './layout'
 
 // Pure grid logic: every widget placement decision in the shell runs through these.
 
@@ -112,5 +112,33 @@ describe('pack', () => {
       const others = packed!.filter((q) => q.id !== p.id)
       expect(findSlot(others, p.size, undefined, { col: p.col, row: p.row })).toEqual({ col: p.col, row: p.row })
     }
+  })
+})
+
+describe('snapToCell', () => {
+  it('rounds pointer positions to the nearest cell', () => {
+    expect(snapToCell(0, 0, 1, 1)).toEqual({ col: 0, row: 0 })
+    expect(snapToCell(85, 0, 1, 1)).toEqual({ col: 0, row: 0 }) // under half a pitch
+    expect(snapToCell(90, 0, 1, 1)).toEqual({ col: 1, row: 0 }) // past half a pitch
+  })
+
+  it('clamps so the widget always stays on the board', () => {
+    expect(snapToCell(-90, -90, 1, 1)).toEqual({ col: 0, row: 0 })
+    expect(snapToCell(10_000, 10_000, 2, 2)).toEqual({ col: COLS - 2, row: ROWS - 2 })
+  })
+})
+
+describe('intersecting', () => {
+  const a = { id: 'a', size: '2x2' as const, col: 0, row: 0 }
+  const b = { id: 'b', size: '1x1' as const, col: 5, row: 3 }
+
+  it('names the widgets under a dropped footprint', () => {
+    expect(intersecting([a, b], '2x2', { col: 1, row: 1 })).toEqual([a])
+    expect(intersecting([a, b], '1x1', { col: 5, row: 3 })).toEqual([b])
+    expect(intersecting([a, b], '1x1', { col: 2, row: 3 })).toEqual([])
+  })
+
+  it('skips the dragged widget itself', () => {
+    expect(intersecting([a], '2x2', { col: 0, row: 0 }, 'a')).toEqual([])
   })
 })

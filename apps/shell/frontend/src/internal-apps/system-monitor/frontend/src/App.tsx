@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { AppProps } from '@/apps/types'
 import { AsciiMeter } from '@/ui'
+import './sysmon.css'
 
 export function SystemMonitorApp({ size }: AppProps) {
   const cpu = useDrift(38)

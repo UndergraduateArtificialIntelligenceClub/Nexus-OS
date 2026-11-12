@@ -7,7 +7,7 @@
 import { createContext, useContext, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { getApp, isAppId, nearestSize, type AppId } from '@/apps/registry'
 import type { AppMode } from '@/apps/types'
-import { SIZE_ORDER, findSlot, fits, isSize, pack, type Placement, type Size, type Slot } from './layout'
+import { COLS, ROWS, SIZE_DIMS, SIZE_ORDER, findSlot, fits, intersecting, isSize, pack, type Placement, type Size, type Slot } from './layout'
 
 export interface AppInstance extends Placement {
   appId: AppId
@@ -229,6 +229,47 @@ export function createDesktopStore(initial: DesktopState) {
     if (state.focusedId !== id) update([], id)
   }
 
+  /** Drag-and-drop repositioning: a free cell takes the widget, an equal-size
+   *  widget swaps with it, and a lone different-size widget steps aside. */
+  const move = (appId: AppId, col: number, row: number): string => {
+    const { label } = getApp(appId)
+    const it = find(appId)
+    if (!it) return `${label} isn't open.`
+    if (it.mode === 'minimized') return `${label} is minimized — restore it first.`
+    if (it.mode === 'fullscreen') return `${label} is fullscreen right now.`
+    const d = SIZE_DIMS[it.size]
+    const target = {
+      col: Math.max(0, Math.min(COLS - d.w, col)),
+      row: Math.max(0, Math.min(ROWS - d.h, row)),
+    }
+    if (target.col === it.col && target.row === it.row) return `${label} is already there.`
+
+    const others = onGrid().filter((o) => o.id !== it.id)
+    if (fits(others, it.size, target)) {
+      update([{ ...it, ...target }], it.id)
+      return `moved ${label}.`
+    }
+
+    const blockers = intersecting(others, it.size, target)
+    if (blockers.length === 1) {
+      const o = blockers[0]
+      const rest = others.filter((x) => x.id !== o.id)
+      if (o.size === it.size) {
+        update([{ ...it, ...target }, { ...o, col: it.col, row: it.row }], it.id)
+        return `swapped ${label} and ${getApp(o.appId).label}.`
+      }
+      // Different footprints: the other widget re-homes — the spot just vacated
+      // first, then any free cell. Never repack: a drag must not reshuffle the desk.
+      const home = { col: it.col, row: it.row }
+      const spot = fits(rest, o.size, home) ? home : findSlot(rest, o.size, o.id, home)
+      if (spot) {
+        update([{ ...it, ...target }, { ...o, ...spot }], it.id)
+        return `moved ${label}; ${getApp(o.appId).label} stepped aside.`
+      }
+    }
+    return `no room to put ${label} there.`
+  }
+
   const tidy = (): string => {
     const grid = onGrid()
     const packed = pack(grid)
@@ -256,6 +297,7 @@ export function createDesktopStore(initial: DesktopState) {
     fullscreen,
     exitFullscreen,
     focus,
+    move,
     tidy,
   }
 }
