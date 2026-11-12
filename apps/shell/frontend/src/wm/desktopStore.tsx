@@ -254,14 +254,19 @@ export function createDesktopStore(initial: DesktopState) {
     if (blockers.length === 1) {
       const o = blockers[0]
       const rest = others.filter((x) => x.id !== o.id)
-      if (o.size === it.size) {
-        update([{ ...it, ...target }, { ...o, col: it.col, row: it.row }], it.id)
+      // Room for the other widget is judged with the dragged one already sitting
+      // at its target: the mover can't be parked on cells the dragged widget
+      // still holds, and its own cells only count once it has left them.
+      const occupied = [...rest, { ...it, ...target }]
+      const home = { col: it.col, row: it.row }
+      if (o.size === it.size && fits(occupied, o.size, home)) {
+        update([{ ...it, ...target }, { ...o, ...home }], it.id)
         return `swapped ${label} and ${getApp(o.appId).label}.`
       }
-      // Different footprints: the other widget re-homes — the spot just vacated
-      // first, then any free cell. Never repack: a drag must not reshuffle the desk.
-      const home = { col: it.col, row: it.row }
-      const spot = fits(rest, o.size, home) ? home : findSlot(rest, o.size, o.id, home)
+      // Different footprints — or a half-step swap that would collide — so the
+      // other widget re-homes: the spot just vacated first, then any free cell.
+      // Never repack: a drag must not reshuffle the desk.
+      const spot = fits(occupied, o.size, home) ? home : findSlot(occupied, o.size, undefined, home)
       if (spot) {
         update([{ ...it, ...target }, { ...o, ...spot }], it.id)
         return `moved ${label}; ${getApp(o.appId).label} stepped aside.`

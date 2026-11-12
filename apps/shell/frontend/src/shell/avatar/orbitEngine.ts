@@ -134,17 +134,17 @@ const SHELLS: Array<[radius: number, parallax: number]> = [
 ]
 
 // The pilot light: when fully dormant the orb leaves this faint ember behind, so
-// it never vanishes from the desk outright. Cells are [dx, dy, glyph level].
-const EMBER: Array<[number, number, number]> = [
-  [0, 0, 4],
-  [0, -1, 2],
-  [0, 1, 2],
-  [-1, 0, 2],
-  [1, 0, 2],
-  [-1, -1, 1],
-  [1, -1, 1],
-  [-1, 1, 1],
-  [1, 1, 1],
+// it never vanishes from the desk outright. Cells: [dx, dy, ramp char, density].
+const EMBER: Array<[number, number, number, number]> = [
+  [0, 0, 7, 0.55],
+  [0, -1, 4, 0.2],
+  [0, 1, 4, 0.2],
+  [-1, 0, 4, 0.2],
+  [1, 0, 4, 0.2],
+  [-1, -1, 2, 0.09],
+  [1, -1, 2, 0.09],
+  [-1, 1, 2, 0.09],
+  [1, 1, 2, 0.09],
 ]
 
 export function startOrbit(canvas: HTMLCanvasElement, opts: OrbitOptions = {}): OrbitHandle {
@@ -232,12 +232,13 @@ export function startOrbit(canvas: HTMLCanvasElement, opts: OrbitOptions = {}): 
     if (cols < 3 || rows < 3) return
     const cx = cols >> 1
     const cy = rows >> 1
-    for (const [dx, dy, g] of EMBER) {
+    for (const [dx, dy, k, dens] of EMBER) {
       const i = cx + dx
       const j = cy + dy
       if (i < 0 || j < 0 || i >= cols || j >= rows) continue
-      // Hue row 0 (accent), glyph level g.
-      ctx.drawImage(atlas, g * cw, (g - 1) * ch, cw, ch, i * cw, j * ch, cw, ch)
+      // Hue row 0 (accent); atlas columns are fill level, rows are ramp chars.
+      const lv = Math.round(dens * (LV - 1))
+      ctx.drawImage(atlas, lv * cw, (k - 1) * ch, cw, ch, i * cw, j * ch, cw, ch)
     }
   }
 
@@ -305,12 +306,13 @@ export function startOrbit(canvas: HTMLCanvasElement, opts: OrbitOptions = {}): 
       rot.set([Math.cos(ax), Math.sin(ax), Math.cos(ay), Math.sin(ay), Math.cos(az), Math.sin(az)], k * 6)
     }
 
-    // Fully dissolved: the orb sleeps (no rAF) leaving only its pilot-light ember.
-    if (d > 0.999) {
+    // Fully dissolved: a dormant orb sleeps (no rAF) leaving only its pilot-light
+    // ember. A waking orb must keep the loop alive while presence drains back.
+    if (d > 0.999 && dormant) {
       if (!blank) {
         ctx.clearRect(0, 0, W, H)
         prev.fill(0)
-        if (dormant) drawEmber()
+        drawEmber()
         blank = true
       }
       return

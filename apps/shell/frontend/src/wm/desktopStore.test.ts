@@ -191,6 +191,38 @@ describe('move', () => {
     expect(store.find('monitor')).toMatchObject({ col: 0, row: 0 }) // the vacated spot fits a 2x1
   })
 
+  it('refuses when the only room for the blocker is its own cells', () => {
+    // A board full except for the 2x2's own span: dropping a 1x1 on the 2x2 must
+    // be refused — the blocker can't be parked on cells it still holds itself,
+    // and the dragged widget counts as sitting at its target.
+    const apps = ['notes', 'browser', 'gallery', 'timer', 'files', 'terminal', 'calendar', 'monitor', 'wm'] as const
+    const instances: AppInstance[] = [mk('big', 'clock', '2x2', 0, 0)]
+    let n = 0
+    for (let row = 0; row < ROWS; row++)
+      for (let col = 0; col < COLS; col++) {
+        if (row < 2 && col < 2) continue // the 2x2's own span
+        if (col === COLS - 1 && row === ROWS - 1) continue // the dragged widget's cell
+        instances.push(mk(`f${n++}`, apps[n % apps.length]!, '1x1', col, row))
+      }
+    instances.push(mk('set', 'settings', '1x1', COLS - 1, ROWS - 1))
+    const store = createDesktopStore({ instances, focusedId: null })
+    expect(store.move('settings', 0, 0)).toContain('no room')
+    expect(store.find('settings')).toMatchObject({ col: COLS - 1, row: ROWS - 1 })
+    expect(store.find('clock')).toMatchObject({ col: 0, row: 0 })
+  })
+
+  it('re-homes the blocker when a half-step swap would collide with the dragged widget', () => {
+    // Dragging the 2x1 from (0,0) to (1,0) keeps cell (1,0), so the old spot is
+    // not really vacated: the blocker moves aside instead of swapping into it.
+    const store = createDesktopStore({
+      instances: [mk('t', 'timer', '2x1', 0, 0), mk('m', 'monitor', '2x1', 1, 0)],
+      focusedId: null,
+    })
+    expect(store.move('timer', 1, 0)).toContain('stepped aside')
+    expect(store.find('timer')).toMatchObject({ col: 1, row: 0 })
+    expect(store.find('monitor')).toMatchObject({ col: 3, row: 0 })
+  })
+
   it('refuses when the target would overlap several widgets', () => {
     const store = createDesktopStore({
       instances: [mk('n', 'notes', '2x1', 0, 0), mk('m', 'monitor', '1x1', 2, 0), mk('c', 'clock', '1x1', 3, 0)],
