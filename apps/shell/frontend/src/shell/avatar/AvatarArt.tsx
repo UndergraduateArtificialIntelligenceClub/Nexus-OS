@@ -1,5 +1,5 @@
-import { AsciiFace } from '@/ui'
 import type { AgentStatus } from '../agent/agentStore'
+import { OrbitArt } from './OrbitArt'
 
 export interface AvatarArtProps {
   status: AgentStatus
@@ -7,11 +7,11 @@ export interface AvatarArtProps {
 }
 
 /**
- * The avatar's picture. The face data and animation live in the UI library
- * (`ui/ascii/AsciiFace.tsx`), shared with widgets and overlays. This stays the slot
- * for the team's real art: swap this component and keep the props. It must remain
- * decorative; AgentAvatar carries the accessible name.
+ * The avatar's picture: the ORBIT orb (see `orbitEngine.ts`). The ASCII face
+ * (`AsciiFace` in the UI library) stays available for widgets and overlays; this
+ * is the slot for the shell's real art. It must remain decorative — AgentAvatar
+ * carries the accessible name.
  */
 export function AvatarArt({ status, reduced }: AvatarArtProps) {
-  return <AsciiFace status={status} reduced={reduced} className="nx-avatar-art" />
+  return <OrbitArt status={status} reduced={reduced} />
 }

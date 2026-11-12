@@ -38,14 +38,21 @@ const instance = (appId: AppId, size: Size, slot: Slot): AppInstance => ({
   mode: 'widget',
 })
 
-/** First launch: a few widgets build in one after another. */
+/** First launch: a rich, mixed desk — nearly every app, one per cell group. */
 export function defaultDesktop(): DesktopState {
   return {
     instances: [
       instance('clock', '2x2', { col: 0, row: 0 }),
-      instance('notes', '2x1', { col: 2, row: 0 }),
-      instance('monitor', '1x1', { col: 2, row: 1 }),
-      instance('files', '1x1', { col: 3, row: 1 }),
+      instance('browser', '2x2', { col: 2, row: 0 }),
+      instance('notes', '2x1', { col: 4, row: 0 }),
+      instance('gallery', '1x2', { col: 4, row: 1 }),
+      instance('timer', '1x1', { col: 5, row: 1 }),
+      instance('wm', '2x1', { col: 0, row: 2 }),
+      instance('files', '2x1', { col: 2, row: 2 }),
+      instance('monitor', '1x1', { col: 5, row: 2 }),
+      instance('calendar', '2x1', { col: 0, row: 3 }),
+      instance('settings', '1x1', { col: 2, row: 3 }),
+      instance('terminal', '2x1', { col: 3, row: 3 }),
     ],
     focusedId: null,
   }

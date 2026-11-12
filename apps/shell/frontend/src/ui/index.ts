@@ -59,4 +59,10 @@ export { WidgetTemplate, type WidgetTemplateProps } from './templates/WidgetTemp
 export { AppTemplate, type AppTemplateProps } from './templates/AppTemplate'
 
 // WM integration seam (the sanctioned exception — see integration.ts)
-export { useAppActions, type AppActions } from './integration'
+export {
+  useAppActions,
+  useDesktopCommands,
+  useDesktopInstances,
+  type AppActions,
+  type DesktopCommands,
+} from './integration'

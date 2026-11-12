@@ -68,6 +68,44 @@
 
 /* --- App instances (one stable div per app, moved between hosts) --- */
 
+/* Hover controls on a widget's slot: size, fullscreen, minimize, close. They sit
+   above the app's surface but only answer when the slot is hovered or focused. */
+.nx-slot-chips {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.nx-slot:hover .nx-slot-chips,
+.nx-slot:focus-within .nx-slot-chips {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.nx-slot-chips button {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-key);
+  background: var(--surface);
+  color: var(--muted);
+  font: 11px/1 var(--mono);
+  cursor: pointer;
+  transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.nx-slot-chips button:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .nx-instance {
   position: absolute;
   inset: 0;
