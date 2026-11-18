@@ -6,6 +6,7 @@ contains, how labeling works, and how you should pick work if you own a module.
 The **source of truth is GitHub Issues**. This doc is a snapshot index — tick the checkboxes in
 each issue's acceptance criteria there, and update the Status column here when an issue closes.
 
+- Project board (kanban, grouped by Priority): [Nexus OS Roadmap #10](https://github.com/orgs/UndergraduateArtificialIntelligenceClub/projects/10)
 - Milestone 1 — MVP gaps: [#4](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/milestone/4)
 - Milestone 2 — Integration, Gestures, Vision, Agents Manager: [#5](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/milestone/5)
 - Milestone 3 — Android, Apps, Integration: [#6](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/milestone/6)
@@ -237,8 +238,9 @@ Goal: close every incomplete checkpoint from the original MVP plan before starti
    An issue is only pickable when its dependencies are closed (or you're doing the fixture-mode
    part explicitly allowed in some bodies, e.g. Tools manager can ship in fixture mode before
    the engine is wired).
-4. **Claim it.** Assign yourself on the issue so nobody double-books. Move it on the project
-   board (when available) to *In Progress*.
+4. **Claim it.** Assign yourself on the issue so nobody double-books, and move the item to
+   *In Progress* on the [project board](https://github.com/orgs/UndergraduateArtificialIntelligenceClub/projects/10)
+   (each item already carries a Priority of p0/p1/p2).
 5. **Work to the acceptance criteria.** The `- [ ]` checklist in the issue body IS the
    definition of done. Tick items as you complete them — the checkboxes are live on GitHub.
    Reference the issue in your PR (`Closes #NN` or `Refs #NN`).
