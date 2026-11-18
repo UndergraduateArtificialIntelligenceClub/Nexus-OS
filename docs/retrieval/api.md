@@ -16,9 +16,8 @@ HTTP requests from a tool back to FastAPI.
 | POST | `/api/v1/web/browse` | Bearer | Calls `fetch_page(url)` |
 | GET | `/docs`, `/openapi.json` | None | API documentation and schemas; no secrets |
 
-Legacy `POST /desktop/state` and `POST /agent/invoke` remain unchanged scaffolding.
-They do not run the implemented retrieval tools and are not protected by the new
-retrieval bearer dependency. Do not treat them as production agent APIs.
+The legacy `POST /desktop/state` and `POST /agent/invoke` scaffolding routes were
+removed (issue #40).
 The merged AI-Core implements run/resume/cancel endpoints and session WebSocket events;
 see [the AI-Core API flow](../AI-Core/07-api-flow.md). `GET /api/v1/tools`
 remains its canonical registry discovery endpoint. Retrieval discovery is separately
