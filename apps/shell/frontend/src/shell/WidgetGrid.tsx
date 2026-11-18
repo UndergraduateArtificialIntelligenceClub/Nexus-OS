@@ -1,19 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import { getApp, type AppId } from '@/apps/registry'
 import {
-  CELL,
   COLS,
   GAP,
-  GRID_H,
-  GRID_W,
   ROWS,
   SIZE_DIMS,
   SIZE_ORDER,
+  fitGrid,
   fits,
   intersecting,
   offset,
   snapToCell,
   span,
+  type GridGeometry,
   type Size,
   type Slot,
 } from '@/wm/layout'
@@ -83,18 +82,19 @@ function snapSize(appId: AppId, wanted: { w: number; h: number }, handle: Handle
 export function WidgetGrid() {
   const { state, store } = useDesktop()
   const { store: agent } = useAgent()
-  const scale = useFitScale(GRID_W, GRID_H)
+  const { geo, resizing } = useGridGeometry()
+  const { scale, cellW, cellH } = geo
   const gridRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<Dragging | null>(null)
   const previewRef = useRef<Preview | null>(null)
   const [preview, setPreview] = useState<Preview | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)
   // The drag handlers are native listeners attached once; they read the current
-  // scale through this ref instead of closing over a stale render's value.
-  const scaleRef = useRef(scale)
+  // geometry through this ref instead of closing over a stale render's value.
+  const geoRef = useRef(geo)
   useEffect(() => {
-    scaleRef.current = scale
-  }, [scale])
+    geoRef.current = geo
+  }, [geo])
 
   // Minimized apps leave the grid. A fullscreen app keeps its cell for when it returns.
   const shown = state.instances.filter((it) => it.mode !== 'minimized')
@@ -153,12 +153,12 @@ export function WidgetGrid() {
       const it = store.getState().instances.find((i) => i.id === slotEl.dataset.slot)
       if (!it || it.mode !== 'widget' || it.exiting) return
       const rect = slotEl.getBoundingClientRect()
-      const s = scaleRef.current
+      const s = geoRef.current.scale
       const pxIn = (e.clientX - rect.left) / s
       const pyIn = (e.clientY - rect.top) / s
       const d = SIZE_DIMS[it.size]
-      const nearRight = span(d.w) - pxIn <= EDGE
-      const nearBottom = span(d.h) - pyIn <= EDGE
+      const nearRight = span(d.w, geoRef.current.cellW) - pxIn <= EDGE
+      const nearBottom = span(d.h, geoRef.current.cellH) - pyIn <= EDGE
       const cursor = nearRight && nearBottom ? 'nwse-resize' : nearRight ? 'ew-resize' : nearBottom ? 'ns-resize' : ''
       if (slotEl.style.cursor !== cursor) slotEl.style.cursor = cursor
       hoverSlot = cursor ? slotEl : null
@@ -173,12 +173,12 @@ export function WidgetGrid() {
       const it = store.getState().instances.find((i) => i.id === slotEl.dataset.slot)
       if (!it || it.mode !== 'widget' || it.exiting) return
       const rect = slotEl.getBoundingClientRect()
-      const s = scaleRef.current
+      const s = geoRef.current.scale
       const pxIn = (e.clientX - rect.left) / s
       const pyIn = (e.clientY - rect.top) / s
       const d = SIZE_DIMS[it.size]
-      const nearRight = span(d.w) - pxIn <= EDGE
-      const nearBottom = span(d.h) - pyIn <= EDGE
+      const nearRight = span(d.w, geoRef.current.cellW) - pxIn <= EDGE
+      const nearBottom = span(d.h, geoRef.current.cellH) - pyIn <= EDGE
       const mode: DragMode = nearRight || nearBottom ? 'resize' : 'move'
       const handle: Handle = mode === 'move' ? 'se' : nearRight && nearBottom ? 'se' : nearRight ? 'e' : 's'
       dragRef.current = {
@@ -208,7 +208,7 @@ export function WidgetGrid() {
     function onMove(e: PointerEvent) {
       const drag = dragRef.current
       if (!drag || e.pointerId !== drag.pointerId) return
-      const s = scaleRef.current
+      const { scale: s, cellW: cw, cellH: ch } = geoRef.current
       if (!drag.moved) {
         if (Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) < DRAG_THRESHOLD) return
         drag.moved = true
@@ -232,12 +232,12 @@ export function WidgetGrid() {
         // Carry the real card: the instance div rides inside the slot.
         const dx = (e.clientX - drag.startX) / s
         const dy = (e.clientY - drag.startY) / s
-        drag.slotEl.style.transform = `translate(${offset(drag.col) + dx}px, ${offset(drag.row) + dy}px)`
+        drag.slotEl.style.transform = `translate(${offset(drag.col, cw) + dx}px, ${offset(drag.row, ch) + dy}px)`
         // Where would the card's origin land, in cells?
         const ox = (e.clientX - gridRect.left) / s - drag.grabX
         const oy = (e.clientY - gridRect.top) / s - drag.grabY
         const d = SIZE_DIMS[drag.size]
-        const slot = snapToCell(ox, oy, d.w, d.h)
+        const slot = snapToCell(ox, oy, d.w, d.h, cw, ch)
         const kind = landKind(drag.size, slot, drag.id)
         const cur = previewRef.current
         if (!cur || cur.slot.col !== slot.col || cur.slot.row !== slot.row || cur.kind !== kind) {
@@ -252,15 +252,20 @@ export function WidgetGrid() {
       const px = (e.clientX - gridRect.left) / s
       const py = (e.clientY - gridRect.top) / s
       const d = SIZE_DIMS[drag.size]
-      const pitch = CELL + GAP
+      const pitchX = cw + GAP
+      const pitchY = ch + GAP
       const maxW = Math.min(4, COLS - drag.col)
       const maxH = Math.min(2, ROWS - drag.row)
       // Each cell boundary k sits one gap short of k full pitches, so the edge
       // tracks the pointer exactly at its starting position.
       const wantW =
-        drag.handle === 's' ? d.w : Math.max(1, Math.min(maxW, Math.round((px - offset(drag.col) + GAP) / pitch)))
+        drag.handle === 's'
+          ? d.w
+          : Math.max(1, Math.min(maxW, Math.round((px - offset(drag.col, cw) + GAP) / pitchX)))
       const wantH =
-        drag.handle === 'e' ? d.h : Math.max(1, Math.min(maxH, Math.round((py - offset(drag.row) + GAP) / pitch)))
+        drag.handle === 'e'
+          ? d.h
+          : Math.max(1, Math.min(maxH, Math.round((py - offset(drag.row, ch) + GAP) / pitchY)))
       const size = snapSize(drag.appId, { w: wantW, h: wantH }, drag.handle)
       const kind: PreviewKind = fits(othersOf(drag.id), size, drag) ? 'resize' : 'blocked'
       const cur = previewRef.current
@@ -324,19 +329,24 @@ export function WidgetGrid() {
   }, [store, agent])
 
   return (
-    <div className="nx-grid-box" style={{ width: GRID_W * scale, height: GRID_H * scale }}>
-      <div className="nx-grid" ref={gridRef} style={{ width: GRID_W, height: GRID_H, transform: `scale(${scale})` }}>
+    <div className="nx-grid-box" style={{ width: span(COLS, cellW) * scale, height: span(ROWS, cellH) * scale }}>
+      <div
+        className="nx-grid"
+        ref={gridRef}
+        data-resizing={resizing || undefined}
+        style={{ width: span(COLS, cellW), height: span(ROWS, cellH), transform: `scale(${scale})` }}
+      >
         {shown.map((it) => (
-          <GridSlot key={it.id} instance={it} store={store} />
+          <GridSlot key={it.id} instance={it} store={store} geo={geo} />
         ))}
         {dragging && preview && (
           <div
             className="nx-drop"
             data-kind={preview.kind}
             style={{
-              width: span(SIZE_DIMS[preview.size].w),
-              height: span(SIZE_DIMS[preview.size].h),
-              transform: `translate(${offset(preview.slot.col)}px, ${offset(preview.slot.row)}px)`,
+              width: span(SIZE_DIMS[preview.size].w, cellW),
+              height: span(SIZE_DIMS[preview.size].h, cellH),
+              transform: `translate(${offset(preview.slot.col, cellW)}px, ${offset(preview.slot.row, cellH)}px)`,
             }}
           />
         )}
@@ -345,7 +355,7 @@ export function WidgetGrid() {
   )
 }
 
-function GridSlot({ instance: it, store }: { instance: AppInstance; store: DesktopStore }) {
+function GridSlot({ instance: it, store, geo }: { instance: AppInstance; store: DesktopStore; geo: GridGeometry }) {
   const d = SIZE_DIMS[it.size]
   const hosting = it.mode === 'widget'
   const hostRef = useHostSlot(it.id, 'grid')
@@ -358,9 +368,9 @@ function GridSlot({ instance: it, store }: { instance: AppInstance; store: Deskt
       aria-label={getApp(it.appId).label}
       aria-hidden={hosting ? undefined : true}
       style={{
-        width: span(d.w),
-        height: span(d.h),
-        transform: `translate(${offset(it.col)}px, ${offset(it.row)}px)`,
+        width: span(d.w, geo.cellW),
+        height: span(d.h, geo.cellH),
+        transform: `translate(${offset(it.col, geo.cellW)}px, ${offset(it.row, geo.cellH)}px)`,
       }}
     >
       {hosting && <SlotChips instance={it} store={store} />}
@@ -400,24 +410,39 @@ function chromeRoom() {
   return top + bottom
 }
 
-/** Scales the grid to fit the window: down when tight, up to a gentle cap on large screens. */
-const MAX_SCALE = 1.35
-function useFitScale(w: number, h: number) {
-  const calc = () =>
-    Math.max(
-      0.3,
-      Math.min(
-        MAX_SCALE,
-        (window.innerWidth - STAGE_PAD * 2) / w,
-        (window.innerHeight - chromeRoom() - STAGE_PAD * 2) / h,
-      ),
-    )
-  const [scale, setScale] = useState(calc)
+/** The stage the grid may fill: the window minus the chrome and stage padding. */
+function stageRoom() {
+  return {
+    width: window.innerWidth - STAGE_PAD * 2,
+    height: window.innerHeight - chromeRoom() - STAGE_PAD * 2,
+  }
+}
+
+// Slots glide when they move; during a live window resize that glide would make
+// every card trail the edge, so it pauses until the resize settles.
+const RESIZE_SETTLE = 150
+
+/** Fits the grid to the window: zoom plus stretched cells (see fitGrid), live on resize. */
+function useGridGeometry() {
+  const [geo, setGeo] = useState<GridGeometry>(() => {
+    const { width, height } = stageRoom()
+    return fitGrid(width, height)
+  })
+  const [resizing, setResizing] = useState(false)
   useEffect(() => {
-    const onResize = () => setScale(calc())
+    let settle: ReturnType<typeof setTimeout> | undefined
+    const onResize = () => {
+      const { width, height } = stageRoom()
+      setGeo(fitGrid(width, height))
+      setResizing(true)
+      clearTimeout(settle)
+      settle = setTimeout(() => setResizing(false), RESIZE_SETTLE)
+    }
     window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      window.removeEventListener('resize', onResize)
+      clearTimeout(settle)
+    }
   }, [])
-  return scale
+  return { geo, resizing }
 }

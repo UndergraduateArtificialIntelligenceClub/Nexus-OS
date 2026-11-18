@@ -7,9 +7,12 @@
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
+    "types": ["vitest/globals", "@testing-library/jest-dom"],
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
+      "@nexus/window-state": ["../../../modules/window-state/types.ts"],
+      "@nexus/ipc": ["../../../modules/ipc/contract.ts"],
       "@hooks/*": ["src/hooks/*"],
       "@internal-apps/*": ["src/internal-apps/*"],
       "@types/*": ["src/types/*"],
