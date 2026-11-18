@@ -14,5 +14,8 @@ lxml==6.1.3
 certifi==2026.10.23
 langgraph==0.2.60
 langgraph-checkpoint-sqlite==2.0.1
+# Transitive (langgraph -> langchain-core). Unpinned, pip pulls a release that
+# breaks on pydantic 2.7 and crashes pytest at startup via its plugin.
+langsmith==0.1.147
 aiosqlite==0.20.0
 httpx==0.25.2
