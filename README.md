@@ -289,6 +289,7 @@ Every module contains its own `README.md` explaining:
 - Testing instructions
 
 Start with:
+- `docs/ISSUES.md` — full issue roadmap: milestones, labels, and how to pick work by module
 - `apps/shell/frontend/README.md` — shell widget system
 - `apps/engine/backend/README.md` — agent loop & tools
 - `src-tauri/README.md` — Rust native core

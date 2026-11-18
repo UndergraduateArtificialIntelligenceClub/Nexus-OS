@@ -96,6 +96,54 @@ describe('resize', () => {
   })
 })
 
+describe('setSize', () => {
+  const mk = (
+    id: string,
+    appId: AppInstance['appId'],
+    size: Size,
+    col: number,
+    row: number,
+    mode: AppInstance['mode'] = 'widget',
+  ): AppInstance => ({ id, appId, size, col, row, mode })
+
+  it('grows and shrinks in place, keeping the cell', () => {
+    const store = createDesktopStore({
+      instances: [mk('c', 'clock', '1x1', 0, 0), mk('m', 'monitor', '1x1', 4, 3)],
+      focusedId: null,
+    })
+    expect(store.setSize('clock', '2x2')).toContain('is now 2x2')
+    expect(store.find('clock')).toMatchObject({ size: '2x2', col: 0, row: 0 })
+    expect(store.setSize('clock', '1x1')).toContain('is now 1x1')
+    expect(store.find('clock')).toMatchObject({ size: '1x1', col: 0, row: 0 })
+  })
+
+  it('refuses when the new footprint would overlap a neighbour', () => {
+    const store = createDesktopStore({
+      instances: [mk('c', 'clock', '1x1', 0, 0), mk('m', 'monitor', '1x1', 1, 1), mk('n', 'notes', '2x1', 3, 3)],
+      focusedId: null,
+    })
+    // Growing to 2x2 would cover the monitor at (1,1).
+    expect(store.setSize('clock', '2x2')).toContain('not enough room')
+    expect(store.find('clock')!.size).toBe('1x1')
+    expect(store.find('monitor')).toMatchObject({ col: 1, row: 1 })
+    expect(store.find('notes')).toMatchObject({ col: 3, row: 3 })
+  })
+
+  it('stays within the sizes the app declares', () => {
+    const store = createDesktopStore(defaultDesktop())
+    // The clock supports 1x1/2x1/2x2 — never 4x2.
+    expect(store.setSize('clock', '4x2')).toContain("can't be")
+    expect(store.find('clock')!.size).toBe('2x2')
+  })
+
+  it('resizes a minimized app in the background', () => {
+    const store = createDesktopStore(defaultDesktop())
+    store.minimize('timer')
+    expect(store.setSize('timer', '2x1')).toContain('when restored')
+    expect(store.find('timer')).toMatchObject({ size: '2x1', mode: 'minimized' })
+  })
+})
+
 describe('minimize', () => {
   it('takes the widget off the grid but keeps the instance running', () => {
     const store = createDesktopStore(defaultDesktop())
