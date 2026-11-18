@@ -1,7 +1,8 @@
 """NEXUS OS Agent Engine - FastAPI entry point.
 
-Legacy endpoints (``/health``, ``/desktop/state``, ``/agent/invoke``) keep the
-pre-AI-Core contract working for the Tauri sidecar. The AI-Core surface is:
+``GET /health`` is a process health check. The legacy ``/desktop/state`` and
+``/agent/invoke`` routes were removed with the old ReAct loop (issue #40).
+The AI-Core surface is:
 
 - ``POST /agent/requests``   - validate a C1 RequestEnvelope, run the main graph
 - ``POST /agent/approvals/{approval_id}/decision`` - decide a pending C5 and
@@ -53,22 +54,6 @@ app = FastAPI(title="NEXUS OS Agent Brain", version="0.3.0", lifespan=lifespan,
                           "Retrieval endpoints require NEXUS_API_TOKEN; fixtures return synthetic data.")
 
 runtime: ApiRuntime | None = None
-_react_loop = None
-
-
-def _legacy_loop():
-    """Legacy ReAct loop, imported lazily: ``agent/loop.py`` still imports the
-    removed ``OllamaProvider`` (renamed in ec39430), and importing it at
-    module load stopped the whole server from starting."""
-    global _react_loop
-    if _react_loop is None:
-        try:
-            from agent.loop import ReActLoop
-        except ImportError as error:
-            raise HTTPException(status_code=503,
-                                detail=f"legacy ReAct loop unavailable: {error}") from error
-        _react_loop = ReActLoop()
-    return _react_loop
 
 
 def _runtime() -> ApiRuntime:
@@ -109,22 +94,6 @@ async def shutdown_engine() -> None:
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok", "service": "nexus-engine"}
-
-
-# ---------------------------------------------------------------------------
-# Legacy surface (pre-AI-Core, used by the existing Tauri sidecar flow)
-# ---------------------------------------------------------------------------
-
-
-@app.post("/desktop/state")
-async def get_desktop_state() -> dict:
-    return await _legacy_loop().get_desktop_state()
-
-
-@app.post("/agent/invoke")
-async def agent_invoke(payload: dict) -> dict:
-    intent = payload.get("intent", "")
-    return await _legacy_loop().run(intent)
 
 
 # ---------------------------------------------------------------------------
