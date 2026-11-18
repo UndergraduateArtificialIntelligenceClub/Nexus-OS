@@ -39,7 +39,7 @@ shell ══WS═══▶ ui.command.ack, wm.state
 
 `ui_context` is optional. When omitted, `ui_context.active_surface` is filled from the session's latest `wm.state.focused_app_id`.
 
-The legacy routes (`/health`, `/desktop/state`, `/agent/invoke`, `/agent/requests`, `/agent/approvals/{id}/decision`) are unchanged.
+The legacy routes (`/health`, `/agent/requests`, `/agent/approvals/{id}/decision`) are unchanged. `/desktop/state` and `/agent/invoke` were removed with the old ReAct loop (issue #40); use `/api/v1/agent/runs` and the `wm.state` event instead.
 
 ## WebSocket envelope
 

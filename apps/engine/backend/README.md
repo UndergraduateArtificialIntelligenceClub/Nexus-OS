@@ -77,13 +77,11 @@ apps/engine/backend/
 │   └── repositories.py      # typed access to canonical records
 ├── agent/
 │   ├── core.py              # CoreEngine facade: handle_request / resume_after_decision
-│   ├── loop.py              # legacy ReAct loop (kept for the old sidecar contract)
 │   ├── agents/              # supervisor / knowledge / desktop / discovery (one file each)
 │   ├── execution/           # trusted core: policy, gateway, adapters, desktop bridge
 │   ├── graphs/              # main_graph (canonical 12 nodes), worker_graph, recipes
 │   ├── memory/service.py    # scoped retrieval + C8 validation
 │   ├── tools/registry.py    # 6 registered tools + typed input schemas
-│   ├── memory/buffer.py     # legacy short-term buffer stub
 │   └── providers/            # model seam: Ollama / OpenAI-compat / scripted (offers only)
 └── README.md
 ```
@@ -110,10 +108,15 @@ cd apps/engine/backend
 test with its own database/artifacts/checkpoints under `tmp_path`.
 
 ## IPC / API Contracts
-Legacy (pre-AI-Core, still consumed by the existing Tauri sidecar):
+Process health:
 - `GET /health`
-- `POST /desktop/state`
-- `POST /agent/invoke`
+
+Removed (issue #40): `POST /desktop/state` and `POST /agent/invoke`. They
+belonged to the pre-AI-Core ReAct loop (`agent/loop.py`), which imported a
+provider class that no longer existed, so both routes only ever answered 503.
+Nothing called them. Use `POST /api/v1/agent/runs` to run the agent; the
+shell reports desktop state with the `wm.state` WebSocket event
+(docs/AI-Core/07-api-flow.md).
 
 AI-Core surface:
 - `POST /agent/requests` — accepts a C1 `RequestEnvelope` payload
