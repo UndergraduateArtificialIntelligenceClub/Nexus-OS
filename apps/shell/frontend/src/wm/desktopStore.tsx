@@ -179,6 +179,23 @@ export function createDesktopStore(initial: DesktopState) {
     return `not enough room to make ${label} ${size}.`
   }
 
+  /** Drag-resize: set an exact size, in place. Never rearranges the desk. */
+  const setSize = (appId: AppId, size: Size): string => {
+    const { label, sizes } = getApp(appId)
+    const it = find(appId)
+    if (!it) return `${label} isn't open.`
+    if (!sizes.includes(size)) return `${label} can't be ${size}.`
+    if (size === it.size) return `${label} is already ${size}.`
+    if (it.mode === 'minimized') {
+      update([{ ...it, size }])
+      return `${label} will be ${size} when restored.`
+    }
+    const others = onGrid().filter((o) => o.id !== it.id)
+    if (!fits(others, size, it)) return `not enough room to make ${label} ${size}.`
+    update([{ ...it, size }], it.id)
+    return `${label} is now ${size}.`
+  }
+
   const minimize = (appId: AppId): string => {
     const { label } = getApp(appId)
     const it = find(appId)
@@ -297,6 +314,7 @@ export function createDesktopStore(initial: DesktopState) {
     closeAll,
     remove,
     resize,
+    setSize,
     minimize,
     restore,
     fullscreen,

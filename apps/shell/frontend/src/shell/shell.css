@@ -79,9 +79,36 @@
   filter: drop-shadow(0 12px 20px rgb(0 0 0 / 0.4));
 }
 
-.nx-slot[data-dragging] .nx-slot-chips {
+.nx-slot[data-dragging] .nx-slot-chips,
+.nx-slot[data-resizing] .nx-slot-chips {
   opacity: 0;
   pointer-events: none;
+}
+
+/* The resize grips: a corner bracket and edge lips that surface on hover.
+   They're painted only — proximity to the edges does the actual hit-testing. */
+.nx-slot[data-grab]::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  border-right: 2px solid var(--line);
+  border-bottom: 2px solid var(--line);
+  border-bottom-right-radius: var(--radius);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+  pointer-events: none;
+}
+
+.nx-slot[data-grab]:hover::after {
+  opacity: 1;
+}
+
+.nx-slot[data-resizing]::after {
+  opacity: 1;
+  border-color: var(--accent);
 }
 
 /* The drop preview: where the dragged widget will land. */
@@ -109,7 +136,7 @@
 
 /* --- App instances (one stable div per app, moved between hosts) --- */
 
-/* Hover controls on a widget's slot: size, fullscreen, minimize, close. They sit
+/* Hover controls on a widget's slot: fullscreen, minimize, close. They sit
    above the app's surface but only answer when the slot is hovered or focused. */
 .nx-slot-chips {
   position: absolute;

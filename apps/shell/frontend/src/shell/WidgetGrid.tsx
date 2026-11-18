@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { getApp, type AppId } from '@/apps/registry'
 import {
   COLS,
+  GAP,
   ROWS,
   SIZE_DIMS,
+  SIZE_ORDER,
   fitGrid,
   fits,
   intersecting,
@@ -22,8 +24,15 @@ import { useHostSlot } from './hostNodes'
 const STAGE_PAD = 24
 // A press becomes a drag after this many screen pixels of travel.
 const DRAG_THRESHOLD = 7
+// How close to a card's right or bottom edge (logical px) a press starts a resize.
+const EDGE = 14
+// Presses on these stay with the app; everything else drags or resizes the card.
+const INTERACTIVE =
+  'button, a, input, textarea, select, label, [contenteditable="true"], [role="button"], [role="radio"], [role="switch"]'
 
-type PreviewKind = 'free' | 'swap' | 'blocked'
+type PreviewKind = 'free' | 'swap' | 'blocked' | 'resize'
+type DragMode = 'move' | 'resize'
+type Handle = 'e' | 's' | 'se'
 
 interface Preview {
   slot: Slot
@@ -37,6 +46,9 @@ interface Dragging {
   size: Size
   col: number
   row: number
+  mode: DragMode
+  /** Which edge the resize grabs; unused while moving. */
+  handle: Handle
   slotEl: HTMLElement
   home: string
   /** Pointer offset from the slot origin, in logical grid pixels. */
@@ -48,11 +60,23 @@ interface Dragging {
   moved: boolean
 }
 
+/** The app's allowed size closest to a wanted span, weighting the dragged axis. */
+function snapSize(appId: AppId, wanted: { w: number; h: number }, handle: Handle): Size {
+  const wx = handle === 'e' ? 2 : 1
+  const wy = handle === 's' ? 2 : 1
+  const score = (s: Size) =>
+    Math.abs(SIZE_DIMS[s].w - wanted.w) * wx + Math.abs(SIZE_DIMS[s].h - wanted.h) * wy
+  return [...getApp(appId).sizes].sort(
+    (a, b) => score(a) - score(b) || SIZE_ORDER.indexOf(a) - SIZE_ORDER.indexOf(b),
+  )[0]
+}
+
 /**
  * Snap grid: every open app sits in cells the system picks. Drag a widget by any
- * blank part of its card — drop on a free cell to move it, on an equal-size widget
- * to swap, and the orb speaks when a drop doesn't fit. Cells only position things;
- * the apps themselves render in InstanceHost. Hover chips offer size, fullscreen,
+ * blank part of its card to move it (free cell, equal-size swap, the orb speaks
+ * when a drop doesn't fit), or grab its right or bottom edge to resize — the
+ * preview snaps to the sizes that app supports. Cells only position things;
+ * the apps themselves render in InstanceHost. Hover chips offer fullscreen,
  * minimize, close — the same store commands the agent speaks.
  */
 export function WidgetGrid() {
@@ -82,11 +106,15 @@ export function WidgetGrid() {
     const grid = gridRef.current
     if (!grid) return
 
-    /** What a drop at `slot` would do, given the desk right now. */
-    const landKind = (size: Size, slot: Slot, draggedId: string): PreviewKind => {
-      const others = store
+    /** The on-screen widgets other than the one in hand. */
+    const othersOf = (draggedId: string) =>
+      store
         .getState()
         .instances.filter((i) => i.mode !== 'minimized' && !i.exiting && i.id !== draggedId)
+
+    /** What a drop at `slot` would do, given the desk right now. */
+    const landKind = (size: Size, slot: Slot, draggedId: string): PreviewKind => {
+      const others = othersOf(draggedId)
       if (fits(others, size, slot)) return 'free'
       const hit = intersecting(others, size, slot)
       return hit.length === 1 && hit[0].size === size ? 'swap' : 'blocked'
@@ -100,10 +128,40 @@ export function WidgetGrid() {
       window.removeEventListener('keydown', onKey)
     }
 
+    // Edge proximity decides the resize cursor while the desk is at rest.
+    let hoverSlot: HTMLElement | null = null
+
     const clearChrome = (drag: Dragging) => {
       drag.slotEl.removeAttribute('data-dragging')
+      drag.slotEl.removeAttribute('data-resizing')
+      drag.slotEl.style.cursor = ''
+      hoverSlot = null
       document.body.style.userSelect = ''
       document.body.style.cursor = ''
+    }
+
+    const onHover = (e: PointerEvent) => {
+      if (dragRef.current) return
+      const target = e.target instanceof Element ? e.target : null
+      const slotEl = target && grid.contains(target) ? target.closest<HTMLElement>('.nx-slot[data-grab]') : null
+      if (hoverSlot && hoverSlot !== slotEl) {
+        hoverSlot.style.cursor = ''
+        hoverSlot = null
+      }
+      if (!slotEl) return
+      if (target?.closest(INTERACTIVE)) return
+      const it = store.getState().instances.find((i) => i.id === slotEl.dataset.slot)
+      if (!it || it.mode !== 'widget' || it.exiting) return
+      const rect = slotEl.getBoundingClientRect()
+      const s = geoRef.current.scale
+      const pxIn = (e.clientX - rect.left) / s
+      const pyIn = (e.clientY - rect.top) / s
+      const d = SIZE_DIMS[it.size]
+      const nearRight = span(d.w, geoRef.current.cellW) - pxIn <= EDGE
+      const nearBottom = span(d.h, geoRef.current.cellH) - pyIn <= EDGE
+      const cursor = nearRight && nearBottom ? 'nwse-resize' : nearRight ? 'ew-resize' : nearBottom ? 'ns-resize' : ''
+      if (slotEl.style.cursor !== cursor) slotEl.style.cursor = cursor
+      hoverSlot = cursor ? slotEl : null
     }
 
     function onDown(e: PointerEvent) {
@@ -111,22 +169,26 @@ export function WidgetGrid() {
       const target = e.target instanceof Element ? e.target : null
       const slotEl = target?.closest<HTMLElement>('.nx-slot[data-grab]')
       if (!slotEl || !gridRef.current?.contains(slotEl)) return
-      if (
-        target?.closest(
-          'button, a, input, textarea, select, label, [contenteditable="true"], [role="button"], [role="radio"], [role="switch"]',
-        )
-      )
-        return
+      if (target?.closest(INTERACTIVE)) return
       const it = store.getState().instances.find((i) => i.id === slotEl.dataset.slot)
       if (!it || it.mode !== 'widget' || it.exiting) return
       const rect = slotEl.getBoundingClientRect()
       const s = geoRef.current.scale
+      const pxIn = (e.clientX - rect.left) / s
+      const pyIn = (e.clientY - rect.top) / s
+      const d = SIZE_DIMS[it.size]
+      const nearRight = span(d.w, geoRef.current.cellW) - pxIn <= EDGE
+      const nearBottom = span(d.h, geoRef.current.cellH) - pyIn <= EDGE
+      const mode: DragMode = nearRight || nearBottom ? 'resize' : 'move'
+      const handle: Handle = mode === 'move' ? 'se' : nearRight && nearBottom ? 'se' : nearRight ? 'e' : 's'
       dragRef.current = {
         id: it.id,
         appId: it.appId,
         size: it.size,
         col: it.col,
         row: it.row,
+        mode,
+        handle,
         slotEl,
         home: slotEl.style.transform,
         grabX: (e.clientX - rect.left) / s,
@@ -150,27 +212,65 @@ export function WidgetGrid() {
       if (!drag.moved) {
         if (Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) < DRAG_THRESHOLD) return
         drag.moved = true
-        drag.slotEl.setAttribute('data-dragging', '')
+        drag.slotEl.setAttribute(drag.mode === 'resize' ? 'data-resizing' : 'data-dragging', '')
         document.body.style.userSelect = 'none'
-        document.body.style.cursor = 'grabbing'
+        document.body.style.cursor =
+          drag.mode === 'resize'
+            ? drag.handle === 'se'
+              ? 'nwse-resize'
+              : drag.handle === 'e'
+                ? 'ew-resize'
+                : 'ns-resize'
+            : 'grabbing'
         setDragId(drag.id)
       }
-      // Carry the real card: the instance div rides inside the slot.
-      const dx = (e.clientX - drag.startX) / s
-      const dy = (e.clientY - drag.startY) / s
-      drag.slotEl.style.transform = `translate(${offset(drag.col, cw) + dx}px, ${offset(drag.row, ch) + dy}px)`
-      // Where would the card's origin land, in cells?
       const gridEl = gridRef.current
       if (!gridEl) return
       const gridRect = gridEl.getBoundingClientRect()
-      const ox = (e.clientX - gridRect.left) / s - drag.grabX
-      const oy = (e.clientY - gridRect.top) / s - drag.grabY
+
+      if (drag.mode === 'move') {
+        // Carry the real card: the instance div rides inside the slot.
+        const dx = (e.clientX - drag.startX) / s
+        const dy = (e.clientY - drag.startY) / s
+        drag.slotEl.style.transform = `translate(${offset(drag.col, cw) + dx}px, ${offset(drag.row, ch) + dy}px)`
+        // Where would the card's origin land, in cells?
+        const ox = (e.clientX - gridRect.left) / s - drag.grabX
+        const oy = (e.clientY - gridRect.top) / s - drag.grabY
+        const d = SIZE_DIMS[drag.size]
+        const slot = snapToCell(ox, oy, d.w, d.h, cw, ch)
+        const kind = landKind(drag.size, slot, drag.id)
+        const cur = previewRef.current
+        if (!cur || cur.slot.col !== slot.col || cur.slot.row !== slot.row || cur.kind !== kind) {
+          const next: Preview = { slot, kind, size: drag.size }
+          previewRef.current = next
+          setPreview(next)
+        }
+        return
+      }
+
+      // Resize: the card stays put while the preview snaps to an allowed size.
+      const px = (e.clientX - gridRect.left) / s
+      const py = (e.clientY - gridRect.top) / s
       const d = SIZE_DIMS[drag.size]
-      const slot = snapToCell(ox, oy, d.w, d.h, cw, ch)
-      const kind = landKind(drag.size, slot, drag.id)
+      const pitchX = cw + GAP
+      const pitchY = ch + GAP
+      const maxW = Math.min(4, COLS - drag.col)
+      const maxH = Math.min(2, ROWS - drag.row)
+      // Each cell boundary k sits one gap short of k full pitches, so the edge
+      // tracks the pointer exactly at its starting position.
+      const wantW =
+        drag.handle === 's'
+          ? d.w
+          : Math.max(1, Math.min(maxW, Math.round((px - offset(drag.col, cw) + GAP) / pitchX)))
+      const wantH =
+        drag.handle === 'e'
+          ? d.h
+          : Math.max(1, Math.min(maxH, Math.round((py - offset(drag.row, ch) + GAP) / pitchY)))
+      const size = snapSize(drag.appId, { w: wantW, h: wantH }, drag.handle)
+      const kind: PreviewKind = fits(othersOf(drag.id), size, drag) ? 'resize' : 'blocked'
       const cur = previewRef.current
-      if (!cur || cur.slot.col !== slot.col || cur.slot.row !== slot.row || cur.kind !== kind) {
-        const next: Preview = { slot, kind, size: drag.size }
+      if (!cur || cur.size !== size || cur.kind !== kind) {
+        const next: Preview = { slot: { col: drag.col, row: drag.row }, kind, size }
         previewRef.current = next
         setPreview(next)
       }
@@ -191,10 +291,19 @@ export function WidgetGrid() {
       stopListeners()
       clearChrome(drag)
       setDragId(null)
-      const target = previewRef.current?.slot ?? null
+      const p = previewRef.current
       previewRef.current = null
       setPreview(null)
       if (!drag.moved) return
+      if (drag.mode === 'resize') {
+        const size = p?.size
+        if (cancelled || !size || size === drag.size) return
+        const reply = store.setSize(drag.appId, size)
+        const after = store.find(drag.appId)
+        if (!after || after.exiting || after.size !== size) agent.say(reply)
+        return
+      }
+      const target = p?.slot ?? null
       const back = () => (drag.slotEl.style.transform = drag.home)
       if (cancelled || !target) return back()
       if (target.col === drag.col && target.row === drag.row) return back()
@@ -210,8 +319,11 @@ export function WidgetGrid() {
     }
 
     grid.addEventListener('pointerdown', onDown)
+    window.addEventListener('pointermove', onHover)
     return () => {
       grid.removeEventListener('pointerdown', onDown)
+      window.removeEventListener('pointermove', onHover)
+      if (hoverSlot) hoverSlot.style.cursor = ''
       stopListeners()
     }
   }, [store, agent])
@@ -271,12 +383,6 @@ function SlotChips({ instance: it, store }: { instance: AppInstance; store: Desk
   const app = getApp(it.appId)
   return (
     <div className="nx-slot-chips" role="toolbar" aria-label={`${app.label} controls`}>
-      <button type="button" aria-label={`make ${app.label} smaller`} onClick={() => store.resize(it.appId, 'down')}>
-        −
-      </button>
-      <button type="button" aria-label={`make ${app.label} bigger`} onClick={() => store.resize(it.appId, 'up')}>
-        +
-      </button>
       {app.fullscreen && (
         <button
           type="button"

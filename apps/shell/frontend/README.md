@@ -61,6 +61,7 @@ npm run dev
 - ⌘/Ctrl+K or `/`: Spotlight (ask Nexus or find an app). Clicking the avatar opens it too.
 - ⌘/Ctrl+.: show the dock. ⌘/Ctrl+M: minimize the focused app. ⌘/Ctrl+Enter: fullscreen it. Esc: leave fullscreen.
 - Drag a widget by any blank part of its card — drop on a free cell to move it, on an equal-size widget to swap. A drop that doesn't fit is refused (the orb says so); Esc cancels a drag mid-flight.
+- Resize by dragging a card's right or bottom edge (or its corner): the preview snaps to the sizes that app supports, and a resize that doesn't fit is refused in place.
 - Arrow keys on the avatar move it between resting spots.
 
 ## The avatar
