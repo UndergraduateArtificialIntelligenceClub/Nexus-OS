@@ -35,3 +35,6 @@ src-tauri/gen/
 *.db-wal
 .nexus_artifacts/
 .nexus_checkpoints/
+
+# Playwright MCP local output (screenshots, console logs, page snapshots)
+.playwright-mcp/

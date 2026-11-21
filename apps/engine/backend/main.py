@@ -30,7 +30,7 @@ from search.api import router as retrieval_router, domain_error, validation_erro
 from search.errors import RetrievalError
 
 from agent.core import CoreEngine, CoreRequestResult
-from api import ApiRuntime, create_v1_router, install_error_handlers
+from api import ApiRuntime, create_v1_router, install_error_handlers, install_local_cors
 from schemas.contracts import RequestEnvelope
 
 @asynccontextmanager
@@ -60,6 +60,8 @@ def _runtime() -> ApiRuntime:
     global runtime
     if runtime is None:
         runtime = ApiRuntime.build()
+    if hasattr(app.state, "retrieval_tools"):
+        runtime.engine.adapter_context.web = app.state.retrieval_tools
     return runtime
 
 
@@ -82,6 +84,8 @@ app.include_router(retrieval_router)
 app.add_middleware(RetrievalRequestMiddleware)
 app.add_exception_handler(RetrievalError, domain_error)
 app.add_exception_handler(RequestValidationError, combined_validation_error)
+# Added last so it is the outermost middleware and answers preflights first.
+install_local_cors(app)
 
 
 async def shutdown_engine() -> None:

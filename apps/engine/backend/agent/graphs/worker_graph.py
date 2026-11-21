@@ -22,7 +22,8 @@ approval. Execution is one pass; retries arrive through bounded_replan.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Optional
+import logging
+from typing import Annotated, Any, Callable, Optional
 from uuid import uuid4
 
 from langgraph.graph import END, START, StateGraph
@@ -45,6 +46,13 @@ from schemas.contracts import (
     TaskPacket,
     ToolProposal,
 )
+
+
+_log = logging.getLogger(__name__)
+
+# Observational hook: ("started", packet, None) before a pass and
+# ("finished", packet, result) after it. It never changes the pass.
+WorkerListener = Callable[[str, TaskPacket, Optional[AgentResult]], None]
 
 
 def _append_notes(current: Any, update: Any) -> str:
@@ -82,7 +90,19 @@ class TaskWorker:
         self._knowledge = KnowledgeAgent()
         self._discovery = DiscoveryAgent()
         self._desktop = DesktopAgent()
+        self._listeners: list[WorkerListener] = []
         self._graph = self._build_graph()
+
+    def add_listener(self, listener: WorkerListener) -> None:
+        """Observe worker passes (used by the API layer's agent roster)."""
+        self._listeners.append(listener)
+
+    def _notify(self, kind: str, packet: TaskPacket, result: Optional[AgentResult]) -> None:
+        for listener in self._listeners:
+            try:
+                listener(kind, packet, result)
+            except Exception:  # an observer must never break execution
+                _log.exception("worker listener failed on %s for %s", kind, packet.task_id)
 
     # ------------------------------------------------------------------
     # Public entry
@@ -91,9 +111,11 @@ class TaskWorker:
     async def run(
         self, packet: TaskPacket, request_id: str, session_id: str
     ) -> WorkerRun:
+        self._notify("started", packet, None)
         state = await self._graph.ainvoke(
             WorkerState(packet=packet, request_id=request_id, session_id=session_id)
         )
+        self._notify("finished", packet, _val(state, "result"))
         return WorkerRun(
             result=_val(state, "result"),
             proposal=_val(state, "proposal"),

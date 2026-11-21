@@ -33,8 +33,11 @@ shell ══WS═══▶ ui.command.ack, wm.state
 | `GET` | `/api/v1/agent/runs/{run_id}` | – | Run view (status, agent_state, route, request_ids, response, interrupt, errors) |
 | `POST` | `/api/v1/agent/runs/{run_id}/resume` | `{resume: "yes"\|"no"\|true\|false}` for confirm, `{resume: "<text>"}` for clarify | `202` run view, `409` if nothing is pending |
 | `POST` | `/api/v1/agent/runs/{run_id}/cancel` | – | Run view with `status: "cancelled"`; a pending approval is rejected |
+| `GET` | `/api/v1/agents?session_id={uuid}` | – | `{agents: [AgentIdentity]}` roster; `session_id` optional (all sessions when omitted), `400` if not a UUID. See [agent identity](../agents-manager/agent-identity.md) |
 | `GET` | `/api/v1/tools` | – | Registered tool contracts incl. `input_schema` (JSON Schema) |
 | `GET` | `/api/v1/health` | – | `{status, service, api_version, model_provider}` |
+| `PUT` | `/api/v1/workspaces/{workspace_id}` | `{name?, layout}` | `persist_workspace`: upsert the shell's layout envelope `{version, savedAt, session}` into SQLite `workspaces.layout` → `{saved, workspace_id, saved_at}` (400 bad id/envelope, 413 over 256 KiB) |
+| `GET` | `/api/v1/workspaces/{workspace_id}` | – | Restore on launch: `{workspace_id, name, layout, created_at}`, 404 when nothing is saved |
 | `WS` | `/api/v1/ws?session_id={uuid}` | – | Event stream (below). Closes with 1008 for a non-UUID session. |
 
 `ui_context` is optional. When omitted, `ui_context.active_surface` is filled from the session's latest `wm.state.focused_app_id`.
@@ -68,6 +71,7 @@ Events only go to sockets of the same `session_id`. If no socket is open, events
 | `run.response` | `{speech, widgets[]}` | Final answer (speak it, show it). `widgets` is `[]` until tools produce them. |
 | `run.completed` | `{status: "ok"\|"failed"\|"cancelled"}` | Always the last event of a run. Details: `GET /agent/runs/{run_id}`. |
 | `run.error` | `{error: {code, message, details}}` | Run failed, or *this socket* sent a bad message |
+| `agent.updated` | `{agent_id, role, label, status, since, owner_run_id, last_activity, updated_at}` | An agent appeared or its status/activity changed. Full identity every time; upsert by `agent_id`. Not the avatar (`agent.state`) |
 
 ### Shell → server
 
@@ -85,6 +89,7 @@ Events only go to sockets of the same `session_id`. If no socket is open, events
 | interrupt `kind` | `confirm`, `clarify` |
 | task `status` | `queued`, `running`, `done`, `failed`, `skipped` (only `done`/`failed`/`skipped` are emitted today) |
 | `run.completed` `status` | `ok`, `failed`, `cancelled` |
+| `agent.updated` `status` | `idle`, `running`, `waiting`, `done`, `error` |
 | `ui.command` `action` | `open_app`, `close_app`, `focus`, `move`, `resize`, `minimize`, `maximize`, `restore`, `snap`, `set_avatar_position` |
 | avatar position | `top_left`, `top_center`, `top_right`, `center`, `bottom_left`, `bottom_center`, `bottom_right` |
 
@@ -169,7 +174,7 @@ The shell must therefore ack **every** `ui.command`, including refusals. `engine
 
 | Item | Owner | Note |
 |---|---|---|
-| `GET/PUT /api/v1/wm/layout` (restore/save layout) | Window manager | Today `sessionPersistence.ts` covers it client-side |
+| `GET/PUT /api/v1/workspaces/{id}` (layout restore/save) | Window manager | Live shell uses `wm/desktopStore.tsx` + `wm/workspacePersistence.ts` (`nexus-desktop-v1` cache + SQLite `workspaces.layout`) |
 | `POST /api/v1/voice/tts` (Piper) | Voice | STT stays in the browser and sends text to `/agent/runs` |
 | `POST /api/v1/web/search`, `/web/browse` | Web search | Register them as tools too, so the agent can call them |
 | `GET/POST /api/v1/files…` | Layout | |

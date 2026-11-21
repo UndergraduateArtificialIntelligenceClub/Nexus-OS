@@ -28,6 +28,7 @@ class EventType(str, Enum):
     run_response = "run.response"
     run_completed = "run.completed"
     run_error = "run.error"
+    agent_updated = "agent.updated"
     # client -> server
     ui_command_ack = "ui.command.ack"
     wm_state = "wm.state"
@@ -36,7 +37,7 @@ class EventType(str, Enum):
 SERVER_EVENTS = frozenset({
     EventType.agent_state, EventType.task_progress, EventType.ui_command,
     EventType.run_interrupt, EventType.run_response, EventType.run_completed,
-    EventType.run_error,
+    EventType.run_error, EventType.agent_updated,
 })
 CLIENT_EVENTS = frozenset({EventType.ui_command_ack, EventType.wm_state})
 
@@ -52,6 +53,18 @@ class AgentState(str, Enum):
     acting = "acting"
     waiting = "waiting"  # an interrupt is pending (confirm / clarify)
     speaking = "speaking"
+    error = "error"
+
+
+class AgentStatus(str, Enum):
+    """Roster status of one engine agent (``agent.updated``,
+    ``GET /api/v1/agents``). Not the avatar: that is ``AgentState``.
+    Mapping rules: docs/agents-manager/agent-identity.md."""
+
+    idle = "idle"  # known, not started (e.g. waiting for a task dependency)
+    running = "running"
+    waiting = "waiting"  # blocked on a human decision (approval / clarify)
+    done = "done"
     error = "error"
 
 
@@ -143,6 +156,9 @@ NODE_AGENT_STATE: dict[str, AgentState] = {
     "dispatch_ready_tasks": AgentState.acting,
     "synthesize_outcome": AgentState.thinking,
 }
+
+# Nodes whose update carries newly planned task packets -> idle roster agents.
+PLAN_NODES = frozenset({"supervisor_plan", "bounded_replan"})
 
 # Nodes whose update carries C9 AgentResults -> one task.progress each.
 RESULT_NODES = frozenset({"fast_direct_task", "dispatch_ready_tasks"})

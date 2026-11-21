@@ -175,12 +175,14 @@ class CoreEngine:
         return self.memory.retrieve_context(self.envelope_for(packet.request_id))
 
     def discovery_target(self, packet: TaskPacket) -> EvidenceTarget:
-        """Resolve a Discovery packet's evidence target deterministically.
-
-        A registered ``artifact:`` input ref selects document_read on that
-        artifact; otherwise the bracketed deterministic query from the
-        objective selects memory_lookup. Discovery can never resolve a
-        native/targeted write path from packet content (doc 03 §2)."""
+        """Resolve only the evidence sources granted to this packet."""
+        if "fetch_page" in packet.allowed_capabilities:
+            for ref in packet.input_refs:
+                if ref.lower().startswith(("http://", "https://")):
+                    return EvidenceTarget(kind="page", args={"url": ref}, target_refs=[ref])
+        if "search_web" in packet.allowed_capabilities:
+            return EvidenceTarget(kind="web", args={"query": packet.objective},
+                                  target_refs=["web:search"])
         artifact_refs = [
             ref for ref in packet.input_refs if ref.startswith("artifact:")
         ]

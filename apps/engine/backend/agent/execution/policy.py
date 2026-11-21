@@ -48,6 +48,7 @@ class PolicyTargetRule:
 
 # Starter target families; extend deliberately (doc 06 stop-and-ask).
 TARGET_RULES: tuple[PolicyTargetRule, ...] = (
+    PolicyTargetRule(rule_id="public_web", prefixes=("web:search", "http://", "https://")),
     PolicyTargetRule(rule_id="app_registry", prefixes=("app:",)),
     PolicyTargetRule(rule_id="approved_workspace", prefixes=("workspace:", "artifact:", "file:")),
     PolicyTargetRule(rule_id="local_engine", prefixes=("engine:",)),
@@ -154,6 +155,10 @@ class Policy:
         claimed = RISK_SEVERITY[proposal.risk]
         if claimed < registered:
             return "POLICY_DENIED"
+        if entry.capability_group == "network.web":
+            target = proposal.args.get("url") if proposal.tool_id == "fetch_page" else "web:search"
+            if proposal.target_refs != [target]:
+                return "TARGET_NOT_FOUND"
         if not self.targets_allowed(proposal.tool_id, proposal.target_refs):
             return "TARGET_NOT_FOUND"
         if packet is not None:
@@ -185,6 +190,9 @@ class Policy:
             else proposal_risk
         )
 
+    def requires_network_approval(self, entry: Any) -> bool:
+        return entry.capability_group == "network.web" and not self._settings.auto_approve_network_tools
+
     def evaluate(
         self,
         proposal: ToolProposal,
@@ -200,6 +208,14 @@ class Policy:
         risk = self.effective_risk(entry.risk, proposal.risk)
         # Side-effect claims escalate; they are never dialed back down.
         side_effect = entry.side_effect or proposal.side_effect
+
+        if self.requires_network_approval(entry):
+            if self._existing_approval(proposal.proposal_fingerprint, session_id) is None:
+                return PolicyDecision(
+                    outcome=DecisionOutcome.approval_required,
+                    reason="network access requires approval",
+                    approval=self._create_approval(proposal, session_id),
+                )
 
         if risk == RiskClass.read_only and not side_effect:
             return PolicyDecision(
@@ -255,14 +271,14 @@ class Policy:
     ) -> ApprovalRequest:
         """Build the C5 object; persist it only when a store is wired (the
         decision itself always carries the approval so callers can show it)."""
+        targets = ", ".join(proposal.target_refs) or "no targets"
+        if proposal.tool_id == "search_web":
+            targets += f" for query {proposal.args['query']!r}"
         approval = ApprovalRequest(
             approval_id=str(secrets.token_hex(16)),
             proposal_id=proposal.proposal_id,
             proposal_fingerprint=proposal.proposal_fingerprint,
-            summary=(
-                f"Allow {proposal.tool_id} ({proposal.risk.value}) targeting "
-                f"{', '.join(proposal.target_refs) or 'no targets'}"
-            ),
+            summary=f"Allow {proposal.tool_id} ({proposal.risk.value}) targeting {targets}",
             status=ApprovalStatus.pending,
             created_at=utc_now_iso(),
             expires_at=(

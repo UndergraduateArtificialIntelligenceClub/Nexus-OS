@@ -26,6 +26,7 @@ from uuid import uuid4
 
 from agent.execution.adapters import UnknownOutcomeError
 from agent.execution.desktop_bridge import DesktopBridgeUnavailable
+from search.errors import RetrievalError
 from schemas.contracts import (
     ApprovalStatus,
     CoreError,
@@ -36,14 +37,6 @@ from schemas.contracts import (
     RiskClass,
     utc_now_iso,
 )
-
-_RISK_ORDER: dict[RiskClass, int] = {
-    RiskClass.read_only: 0,
-    RiskClass.reversible_write: 1,
-    RiskClass.sensitive: 2,
-    RiskClass.destructive: 3,
-}
-
 
 def core_error(code: ErrorCode, message: str, retryable: bool = False) -> CoreError:
     return CoreError(code=code, message=message, retryable=retryable)
@@ -140,6 +133,13 @@ class ExecutionGateway:
             if entry.native:
                 return await self._execute_native(execution, entry, started_at)
             return await self._execute_python(execution, entry, started_at, ctx)
+        except RetrievalError as error:
+            detail = error.detail
+            return self._finish(
+                execution, ReceiptStatus.failed, started_at,
+                error=core_error(ErrorCode.ADAPTER_FAILURE,
+                                 f"{detail.code.value}: {detail.message}", detail.retryable),
+            )
         except UnknownOutcome as outcome:
             return self._finish_unknown(execution, started_at, outcome.args[0])
         except asyncio.TimeoutError:
@@ -184,7 +184,8 @@ class ExecutionGateway:
             return False
         if payload["proposal_fingerprint"] != execution.proposal_fingerprint:
             return False
-        if not payload.get("side_effect") and _RISK_ORDER[entry.risk] == _RISK_ORDER[RiskClass.read_only]:
+        if (not payload.get("side_effect") and payload["risk"] == entry.risk == RiskClass.read_only
+                and not self._policy.requires_network_approval(entry)):
             return True  # read-only, no side effect: no approval binding required
 
         # Side-effecting path: a valid, unexpired approval bound to the exact

@@ -9,7 +9,7 @@ Full reference: ``docs/AI-Core/07-api-flow.md``.
 
 from api.events import AgentState, EventType, WsEnvelope
 from api.hub import SessionHub
-from api.routes import ApiRuntime, create_v1_router, install_error_handlers
+from api.routes import ApiRuntime, create_v1_router, install_error_handlers, install_local_cors
 from api.runs import RunManager
 from api.ui_bridge import UiCommandBridge
 
@@ -23,4 +23,5 @@ __all__ = [
     "WsEnvelope",
     "create_v1_router",
     "install_error_handlers",
+    "install_local_cors",
 ]

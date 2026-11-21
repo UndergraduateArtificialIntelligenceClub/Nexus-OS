@@ -107,37 +107,25 @@ face, glyphs, mono typography. **This is open decision D-11 (§9).**
 
 ### 1.3 Problems, inconsistencies, technical debt
 
-**Dead / legacy code from the Phase-1 WM track (superseded by the grid shell):**
-
-- `App.tsx`, `components/` (WindowFrame with title bar + resize handles,
-  WorkspaceCanvas, Taskbar, SnapPreview), `index.css` (dark `#0b0c10` + cyan `#66fcf1`
-  theme that contradicts DESIGN.md).
-- `wm/MockDesktopProvider.tsx`, `wm/mockDesktopStore.ts(+test)`, `wm/DesktopStoreAPI.ts`,
-  `wm/DesktopStoreContext.tsx`, `wm/appRegistry.tsx`, `wm/snap.ts(+test)`,
-  `wm/arrange.ts`, `wm/sessionPersistence.ts(+test)`.
-- `types/WindowState.ts` imports `@nexus/window-state`, a workspace package that does
-  not exist in the root `package.json` workspaces.
-- Nothing is imported from any of the above by `main.tsx` — none of it is live.
-
-**Two competing WM contracts in the tree:** legacy `DesktopStoreAPI` (window ids,
-x/y, workspaces, monitors, free placement) vs. the live `desktopStore` (appId-keyed,
-grid cells, three modes). Two app registries: `wm/appRegistry.tsx` vs. `apps/registry.ts`.
+**Legacy Phase-1 WM track — removed (issue #33):** the free-placement
+`DesktopStoreAPI` stack (`windowStore`, legacy `DesktopProvider`, snap/arrange,
+sessionPersistence, desktopIPC bridge), `types/WindowState.ts` shell re-export,
+and `internal-apps/window-manager/` inspector were deleted. The shell has **one**
+WM: `wm/desktopStore.tsx` + `wm/layout.ts` + `apps/registry.ts` +
+`internal-apps/wm/`.
 
 **Kept for later (not dead):** `modules/window-state/types.ts` (`WindowState` with
 x/y/width/height, `isExternal`) is the cross-runtime contract for engine/Rust and
-Phase-5 native windows. The shell simply no longer renders free-floating windows.
+Phase-5 native windows. The shell does not import or render that model.
 
-**Documentation gaps:**
+**Documentation gaps (remaining):**
 
-- `docs/window-manager/plan.md` describes a 12×8 drag/resize/taskbar MVP; nothing
-  marks it superseded by the grid shell.
-- Root README still says "taskbar, window-snapping previews"; `docs/architecture.md`
-  defers to it.
-- `apps/shell/frontend/README.md` says "No test runner configured" — Vitest is
-  configured with 4 test files.
+- Root README may still mention a permanent taskbar / free snapping in places;
+  prefer `apps/shell/frontend/PRODUCT.md` and `DESIGN.md`.
 - `apps/UI-Overview.md` credits the design system to "UI/UX Pro Max" (a tool
   artifact); `DESIGN.md` is the real spec.
-- Nothing documents that `App.tsx`/`components/`/`index.css` are dead.
+- `docs/window-manager/plan.md` is a short superseded decision record pointing at
+  the live grid WM.
 
 **Code-level debt:**
 
@@ -560,9 +548,9 @@ glass-never-on-glass is enforced by a documented rule.
 - The UI library contributes only the components that *display* run/interrupt/task
   state (§3.E).
 
-**Persistence:** `save()` in the store, later swapped for
-`persist_workspace` / `get_desktop_state` IPC as documented in the
-`desktopStore.tsx` header comments. The library never touches persistence.
+**Persistence:** the store writes a localStorage cache and syncs SQLite
+`workspaces.layout` through the engine's `persist_workspace`
+(`wm/workspacePersistence.ts`, issue #28). The library never touches persistence.
 
 ### 6.3 Widget payload contract (engine-side work item)
 
@@ -637,13 +625,10 @@ Consumption rule: apps import from `@/ui` only. `theme/`, `hooks/`, `types/` sta
 where they are (cross-cutting, referenced by docs). Internal `shell/chrome` may use
 the library; the library may never import `shell/`.
 
-**Phase-0 cleanup (separate, mechanical, first PR):** delete/quarantine `App.tsx`,
-`components/`, `index.css`, `wm/MockDesktopProvider.tsx`, `mockDesktopStore.ts(+test)`,
-`DesktopStoreAPI.ts`, `DesktopStoreContext.tsx`, `wm/appRegistry.tsx`,
-`wm/snap.ts(+test)` (move snap-math tests under `layout.ts`), `wm/arrange.ts`,
-`sessionPersistence.ts(+test)`, the `types/WindowState.ts` re-export; drop
-`lucide-react` and `tailwindcss` from `package.json`; mark
-`docs/window-manager/plan.md` as superseded with a header note.
+**Phase-0 cleanup:** issue #33 removed the free-placement WM generation and the
+orphaned `window-manager` inspector. Live WM remains
+`wm/desktopStore.tsx` + `wm/layout.ts`. `docs/window-manager/plan.md` is a
+superseded decision record.
 
 ---
 
@@ -757,8 +742,8 @@ map, code).
 
 ## 11. Final implementation blueprint (session-ready)
 
-1. **PR-0 (mechanical):** legacy purge + dependency removal + doc headers marking
-   superseded plans. Zero visual change.
+1. **PR-0 (mechanical):** legacy free-placement WM purge (issue #33) + doc headers
+   marking superseded plans. Zero visual change.
 2. **PR-1 (foundations):** tokens v2 + self-hosted fonts + motion/timing tokens +
    z-ladder promotion + `ui/` restructure with barrel + RTL setup + `ui/README.md`
    (contribution rules: token-only values, reduced-motion checklist, same-path rule,
@@ -780,3 +765,66 @@ map, code).
 backends, the vision/gesture pipeline, native Win32 surfaces (Phase 5 uses
 `modules/window-state` unchanged — the library grows external-window surfaces only
 when that phase lands).
+
+---
+
+## 12. Multi-widget layout sign-off (#32)
+
+Checkpoint: the 6×4 widget grid (`wm/layout.ts`, `wm/desktopStore.tsx`,
+`shell/WidgetGrid.tsx`) holds up with many widgets of mixed sizes across every
+desk command. The freeform `windowStore.ts` model is out of scope.
+
+### Automated pass: `apps/shell/frontend/src/wm/layoutSignoff.test.ts`
+
+After **every** action, `wm/testing/gridInvariants.ts` checks:
+
+| # | Invariant | Result |
+|---|-----------|--------|
+| 1 | Bounds: every on-grid widget sits inside 6×4 | pass |
+| 2 | No overlaps (fullscreen widgets keep their cell) | pass |
+| 3 | Every size, minimized ones included, is one the app declares | pass |
+| 4 | Unique instance ids; one live instance per app | pass |
+| 5 | At most one fullscreen app, and only apps with a fullscreen view | pass |
+| 6 | Focus is `null` or a live widget | pass |
+| 7 | Persistence: `loadDesktop()` gives back exactly the live desk | pass |
+| 8 | `move` moves at most two widgets (never reshuffles); `setSize` touches only its target; refusals change nothing | pass |
+
+| Scenario | What it does | Result |
+|----------|--------------|--------|
+| A. Scripted | 7 widgets (2x2, 2x2, 2x1, 2x1, 1x2, 1x1, 1x1): fullscreen + demote, minimize/restore to same cell, move to free cell, equal-size swap, step-aside, multi-blocker refusal, off-board clamp, in-place and blocked resize, ladder resize that forces a repack, tidy ×2, two relaunches mid-session, close during the exit animation, close all (~50 steps) | pass |
+| B. Dense desk | Default 11-widget layout (22+ of 24 cells): open on a near-full board, grow to 4x2, two fullscreens, minimize ×2, tidy, relaunch, restore, sweep a widget across a row | pass |
+| C. Seeded random | 20 seeds × 300 actions covering every desk command, delayed exit animations and relaunches. Failures print the seed and the last 10 actions | pass (6,000 actions) |
+| D. Checker self-test | Hand-built broken desks (overlap, out of bounds, illegal size, duplicates, two fullscreens, dangling focus, corrupt storage) are each flagged | pass |
+
+**Mutation check:** with `fits()` in `layout.ts` deliberately broken to ignore
+occupancy, 22 of 32 tests fail: A, B and every seed. The 10 checker self-tests
+don't use `fits()`, so they keep passing. The checks catch real regressions.
+
+Run: `cd apps/shell/frontend && npx vitest run src/wm/layoutSignoff.test.ts`
+
+### Manual checklist (`npm run dev`, 6+ widgets on screen)
+
+Covers the pointer and visual layer that the store tests can't see.
+
+- [ ] Drag a widget to a free cell: green preview, card glides into place
+- [ ] Drag onto an equal-size widget: swap preview, both trade places
+- [ ] Drag onto one different-size widget: it steps aside, nothing else moves
+- [ ] Drop onto several widgets: red preview, the orb says why, the card snaps back
+- [ ] Escape mid-drag cancels and the card returns home
+- [ ] Resize by the right edge, the bottom edge and the corner: the preview snaps to the app's sizes
+- [ ] A resize into a neighbour shows a blocked preview and is refused
+- [ ] Hover buttons: fullscreen, minimize and close all work
+- [ ] Keyboard: Esc leaves fullscreen, ⌘Enter toggles fullscreen, ⌘M minimizes; the dock restores
+- [ ] Resizing the window reflows the grid with no overlaps or clipped cards
+- [ ] Reloading the page restores the same layout, sizes, modes and focus
+
+### Findings and blockers
+
+The automated pass found no invariant violations, so no blocker issues have been
+filed. Two observations, neither a blocker:
+
+- Until the first desk change, nothing is saved. A fresh install relaunches to a
+  new default desk with new instance ids each time. The layout is the same, so
+  users see no difference.
+- `open(app, size)` on a minimized app restores it at its old size and ignores the
+  requested size.

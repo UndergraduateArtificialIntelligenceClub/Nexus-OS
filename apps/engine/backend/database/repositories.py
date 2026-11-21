@@ -52,10 +52,11 @@ class Repositories:
         self.memories = MemoryRepository(sm)
         self.artifacts = ArtifactRepository(sm)
         self.audit = AuditRepository(sm)
+        self.workspaces = WorkspaceRepository(sm)
         for repo in (self.sessions, self.requests, self.tasks, self.agent_runs,
                      self.proposals, self.approvals, self.executions,
                      self.memory_proposals, self.memories, self.artifacts,
-                     self.audit):
+                     self.audit, self.workspaces):
             repo._repos = self
 
     def audit_event(
@@ -513,6 +514,30 @@ class ArtifactRepository(BaseRepository):
     def get(self, artifact_id: str) -> Optional[dict[str, Any]]:
         return self._fetch_one(
             "SELECT * FROM knowledge_artifacts WHERE artifact_id = :aid", {"aid": artifact_id}
+        )
+
+
+class WorkspaceRepository(BaseRepository):
+    """Shell desktop layouts (``workspaces`` table, issue #28).
+
+    ``layout`` holds the shell's versioned envelope
+    (``{"version", "savedAt", "session"}``) as JSON text, verbatim. The shell
+    owns that shape and validates it on load; the engine only stores it.
+    """
+
+    def save(self, workspace_id: str, name: str, layout: str) -> None:
+        self._exec(
+            """
+            INSERT INTO workspaces (id, name, layout) VALUES (:wid, :name, :layout)
+            ON CONFLICT(id) DO UPDATE SET name = excluded.name, layout = excluded.layout
+            """,
+            {"wid": workspace_id, "name": name, "layout": layout},
+        )
+
+    def get(self, workspace_id: str) -> Optional[dict[str, Any]]:
+        return self._fetch_one(
+            "SELECT id, name, layout, created_at FROM workspaces WHERE id = :wid",
+            {"wid": workspace_id},
         )
 
 

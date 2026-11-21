@@ -4,8 +4,7 @@
   "version": "0.1.0",
   "description": "AI-Native Intelligent Desktop Environment - modular startup scaffold",
   "workspaces": [
-    "apps/shell/frontend",
-    "apps/shell/frontend/internal-apps/*/frontend"
+    "apps/shell/frontend"
   ],
   "scripts": {
     "test": "npm run test:search",

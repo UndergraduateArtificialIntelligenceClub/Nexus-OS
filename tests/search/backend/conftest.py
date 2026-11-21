@@ -36,6 +36,21 @@ def html_fixtures() -> Path:
     return FIXTURES_ROOT / "html"
 
 
+def _is_loopback(address: object) -> bool:
+    """Allow Windows asyncio socketpair fallbacks (connect to 127.0.0.1 / ::1)."""
+
+    host: object
+    if isinstance(address, tuple) and address:
+        host = address[0]
+    else:
+        host = address
+    if isinstance(host, bytes):
+        host = host.decode("ascii", errors="ignore")
+    if not isinstance(host, str):
+        return False
+    return host in {"127.0.0.1", "::1", "localhost"}
+
+
 @pytest.fixture(autouse=True)
 def deny_network(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest) -> None:
     """Fail tests that attempt real network access unless explicitly opted in."""
@@ -43,8 +58,18 @@ def deny_network(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
     if request.node.get_closest_marker("allow_network"):
         return
 
-    def blocked(*_args: object, **_kwargs: object) -> None:
+    real_create_connection = socket.create_connection
+    real_connect = socket.socket.connect
+
+    def blocked_create_connection(address, *args: object, **kwargs: object):
+        if _is_loopback(address):
+            return real_create_connection(address, *args, **kwargs)
         raise AssertionError("network access is disabled in Search & Discover tests")
 
-    monkeypatch.setattr(socket, "create_connection", blocked)
-    monkeypatch.setattr(socket.socket, "connect", blocked)
+    def blocked_connect(self, address):
+        if _is_loopback(address):
+            return real_connect(self, address)
+        raise AssertionError("network access is disabled in Search & Discover tests")
+
+    monkeypatch.setattr(socket, "create_connection", blocked_create_connection)
+    monkeypatch.setattr(socket.socket, "connect", blocked_connect)

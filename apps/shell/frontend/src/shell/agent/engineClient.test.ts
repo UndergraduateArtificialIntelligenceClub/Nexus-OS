@@ -87,6 +87,16 @@ describe('engineClient', () => {
     await expect(client.resume('r1', 'yes')).rejects.toMatchObject({ status: 409, error: { code: 'CONFLICT' } })
   })
 
+  it('lists the agent roster for its own session', async () => {
+    const agent = { agent_id: 'supervisor:r1', role: 'supervisor', label: 'supervisor', status: 'running', since: 't', owner_run_id: 'r1', last_activity: 'open browser', updated_at: 't' }
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ agents: [agent] }), { status: 200 }))
+    const { client } = setup({ fetchImpl })
+    await expect(client.listAgents()).resolves.toEqual([agent])
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe(`http://127.0.0.1:8000/api/v1/agents?session_id=${SESSION}`)
+    expect(init.method).toBe('GET')
+  })
+
   it('re-sends the last wm.state after reconnecting', () => {
     vi.useFakeTimers()
     const { client, socket } = setup()

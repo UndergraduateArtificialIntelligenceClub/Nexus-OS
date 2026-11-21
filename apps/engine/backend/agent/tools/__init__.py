@@ -1,7 +1,7 @@
 """AI-Core registry and independent retrieval service facade.
 
-ToolRegistry remains the canonical proposal/policy registry. Retrieval tools
-are not yet registered behind the AI-Core execution gateway.
+ToolRegistry remains the canonical proposal/policy registry. Discovery executes retrieval
+proposals through the gateway using the shared web facade.
 """
 from agent.tools.registry import ToolEntry, ToolRegistry
 from agent.tools.window_tools import WindowTools

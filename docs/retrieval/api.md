@@ -21,8 +21,8 @@ removed (issue #40).
 The merged AI-Core implements run/resume/cancel endpoints and session WebSocket events;
 see [the AI-Core API flow](../AI-Core/07-api-flow.md). `GET /api/v1/tools`
 remains its canonical registry discovery endpoint. Retrieval discovery is separately
-available at `/api/v1/web/tools` to preserve both contracts. Retrieval is not yet
-registered behind the AI-Core policy gateway. Voice and arbitrary tool invocation
+available at `/api/v1/web/tools` to preserve both contracts. Both web tools are registered
+with the AI-Core policy gateway. Voice and arbitrary tool invocation
 endpoints are not implemented by the retrieval service.
 
 ## Authentication and runtime mode

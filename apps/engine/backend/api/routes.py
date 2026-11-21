@@ -4,9 +4,12 @@
     GET  /api/v1/agent/runs/{run_id}           run snapshot
     POST /api/v1/agent/runs/{run_id}/resume    answer an interrupt  -> 202
     POST /api/v1/agent/runs/{run_id}/cancel    stop a run
+    GET  /api/v1/agents[?session_id=]          agent roster (read-only)
     GET  /api/v1/tools                         registered tool contracts
+    PUT  /api/v1/workspaces/{workspace_id}     persist_workspace: save a shell layout
+    GET  /api/v1/workspaces/{workspace_id}     load a saved shell layout (restore on launch)
     GET  /api/v1/health
-    WS   /api/v1/ws?session_id={uuid}          events, ui.command(.ack), wm.state
+    WS   /api/v1/ws?session_id={uuid}          events, agent.updated, ui.command(.ack), wm.state
 
 Errors always use ``{"error": {"code", "message", "details"}}``.
 """
@@ -15,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from dataclasses import dataclass
 from typing import Any, Callable, Optional, Union
 from uuid import UUID
@@ -23,10 +27,12 @@ from fastapi import APIRouter, FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.encoders import jsonable_encoder
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from agent.core import CoreEngine
+from api.agents import AgentRoster
 from api.events import CLIENT_EVENTS, EventType, Source, WsEnvelope, api_error
 from api.hub import SessionHub
 from api.runs import RunConflict, RunManager, RunNotFound
@@ -43,6 +49,7 @@ class ApiRuntime:
     engine: CoreEngine
     hub: SessionHub
     runs: RunManager
+    roster: AgentRoster
 
     @classmethod
     def build(cls, settings: Optional[EngineSettings] = None) -> "ApiRuntime":
@@ -50,7 +57,10 @@ class ApiRuntime:
         hub = SessionHub()
         bridge = UiCommandBridge(hub, ack_timeout_seconds=settings.ui_ack_timeout_seconds)
         engine = CoreEngine(settings, desktop_bridge=bridge)
-        return cls(engine=engine, hub=hub, runs=RunManager(engine, hub))
+        roster = AgentRoster(hub)
+        engine.worker.add_listener(roster.on_worker)
+        return cls(engine=engine, hub=hub, runs=RunManager(engine, hub, roster),
+                   roster=roster)
 
     async def aclose(self) -> None:
         await self.engine.aclose()
@@ -74,6 +84,31 @@ class ResumeBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     resume: Union[bool, str]
+
+
+class PersistWorkspaceBody(BaseModel):
+    """``persist_workspace`` over REST. ``layout`` is the shell's versioned
+    envelope; only its outer shape is checked here."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(default="Default", min_length=1, max_length=120)
+    layout: dict[str, Any]
+
+
+WORKSPACE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$")
+MAX_LAYOUT_BYTES = 256 * 1024
+
+
+def _layout_problem(layout: dict[str, Any]) -> Optional[str]:
+    version = layout.get("version")
+    if not isinstance(version, int) or isinstance(version, bool) or version < 1:
+        return "layout.version must be a positive integer"
+    if not isinstance(layout.get("savedAt"), str):
+        return "layout.savedAt must be a string"
+    if not isinstance(layout.get("session"), dict):
+        return "layout.session must be an object"
+    return None
 
 
 def _error(status: int, code: str, message: str,
@@ -143,6 +178,12 @@ def create_v1_router(get_runtime: Callable[[], ApiRuntime]) -> APIRouter:
         except RunConflict as error:
             return _error(409, "CONFLICT", str(error))
 
+    @router.get("/agents")
+    async def list_agents(session_id: Optional[str] = None):
+        if session_id is not None and not _is_uuid(session_id):
+            return _error(400, "INVALID_INPUT", "session_id must be a UUID")
+        return {"agents": get_runtime().roster.list(session_id)}
+
     @router.get("/tools")
     async def list_tools() -> dict[str, Any]:
         entries = get_runtime().engine.registry.all_entries()
@@ -160,6 +201,33 @@ def create_v1_router(get_runtime: Callable[[], ApiRuntime]) -> APIRouter:
             }
             for entry in entries
         ]}
+
+    @router.put("/workspaces/{workspace_id}")
+    async def persist_workspace(workspace_id: str, body: PersistWorkspaceBody):
+        if not WORKSPACE_ID_RE.match(workspace_id):
+            return _error(400, "INVALID_INPUT", "workspace_id must be 1-64 chars of [A-Za-z0-9_.:-]")
+        problem = _layout_problem(body.layout)
+        if problem:
+            return _error(400, "INVALID_INPUT", problem)
+        text = json.dumps(body.layout, separators=(",", ":"))
+        if len(text.encode("utf-8")) > MAX_LAYOUT_BYTES:
+            return _error(413, "PAYLOAD_TOO_LARGE", f"layout exceeds {MAX_LAYOUT_BYTES} bytes")
+        get_runtime().engine.repos.workspaces.save(workspace_id, body.name, text)
+        return {"saved": True, "workspace_id": workspace_id, "saved_at": body.layout["savedAt"]}
+
+    @router.get("/workspaces/{workspace_id}")
+    async def load_workspace(workspace_id: str):
+        if not WORKSPACE_ID_RE.match(workspace_id):
+            return _error(400, "INVALID_INPUT", "workspace_id must be 1-64 chars of [A-Za-z0-9_.:-]")
+        row = get_runtime().engine.repos.workspaces.get(workspace_id)
+        if row is None:
+            return _error(404, "NOT_FOUND", f"workspace {workspace_id} does not exist")
+        try:
+            layout = json.loads(row["layout"])
+        except (TypeError, ValueError):
+            return _error(500, "STORAGE_CORRUPT", f"workspace {workspace_id} layout is not valid JSON")
+        return {"workspace_id": row["id"], "name": row["name"], "layout": layout,
+                "created_at": row["created_at"]}
 
     @router.websocket("/ws")
     async def session_socket(websocket: WebSocket, session_id: str = "") -> None:
@@ -212,6 +280,22 @@ def _handle_client_message(hub: SessionHub, session_id: str, raw: str) -> Option
         return WsEnvelope(type=EventType.run_error, session_id=session_id, run_id=run_id,
                           data=api_error("INVALID_INPUT", str(error))).wire()
     return None
+
+
+# The shell runs on a different origin from the engine: the Vite dev server
+# (http://localhost:5173) or the Tauri webview (tauri://localhost on macOS/Linux,
+# http://tauri.localhost on Windows). Only local origins are allowed.
+LOCAL_ORIGIN_REGEX = r"^(tauri://localhost|https?://(localhost|127\.0\.0\.1|tauri\.localhost)(:\d+)?)$"
+
+
+def install_local_cors(app: FastAPI) -> None:
+    """Let the local shell call the REST surface from its own origin."""
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=LOCAL_ORIGIN_REGEX,
+        allow_methods=["GET", "POST", "PUT"],
+        allow_headers=["content-type"],
+    )
 
 
 def install_error_handlers(app: FastAPI) -> None:

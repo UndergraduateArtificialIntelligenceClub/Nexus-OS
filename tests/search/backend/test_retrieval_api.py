@@ -138,7 +138,10 @@ def test_merged_core_and_retrieval_routes_keep_separate_contracts(client):
     assert len(paths) == len(set(paths)), "Duplicate route would shadow another team's API"
     core = client.get("/api/v1/tools")
     assert core.status_code == 200
-    assert "system_diagnostics" in {tool["tool_id"] for tool in core.json()["tools"]}
+    assert {"system_diagnostics", "search_web", "fetch_page"} <= {
+        tool["tool_id"] for tool in core.json()["tools"]
+    }
+    assert main.runtime.engine.adapter_context.web is app.state.retrieval_tools
     assert "mode" not in core.json()
     invalid_run = client.post("/api/v1/agent/runs", json={})
     assert invalid_run.status_code == 400
