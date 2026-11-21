@@ -25,7 +25,7 @@ The agent acts through validated tool calls on one shared `WindowState` contract
 - Fixed snap grid of 6 columns × 4 rows. Widget sizes are 1x1, 2x1, 1x2, 2x2 and 4x2, set by the system, never by dragging.
 - App modes: widget, fullscreen, minimized.
 - Light, dark and system theme.
-- Layout persists locally for now. It moves to IPC `persist_workspace` / `get_desktop_state` later.
+- Layout persists to SQLite through the engine (`persist_workspace`), with localStorage as the cache and the fallback when the engine isn't running.
 - An agent avatar sits at one of 7 anchors and reacts to agent and voice state.
 - Undecided: per-app agent actions ("Kara Link") wait for the Automations orchestrator design. Real avatar art comes from the team lead later.
 

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "savedAt": "2026-11-20T18:30:00.000Z",
+  "session": {
+    "instances": [
+      { "id": "clock-seed1", "appId": "clock", "size": "2x2", "col": 0, "row": 0, "mode": "widget" },
+      { "id": "notes-seed2", "appId": "notes", "size": "2x1", "col": 2, "row": 0, "mode": "fullscreen" },
+      { "id": "timer-seed3", "appId": "timer", "size": "1x1", "col": 4, "row": 0, "mode": "minimized" }
+    ],
+    "focusedId": "notes-seed2"
+  }
+}

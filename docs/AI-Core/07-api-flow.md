@@ -35,6 +35,8 @@ shell ══WS═══▶ ui.command.ack, wm.state
 | `POST` | `/api/v1/agent/runs/{run_id}/cancel` | – | Run view with `status: "cancelled"`; a pending approval is rejected |
 | `GET` | `/api/v1/tools` | – | Registered tool contracts incl. `input_schema` (JSON Schema) |
 | `GET` | `/api/v1/health` | – | `{status, service, api_version, model_provider}` |
+| `PUT` | `/api/v1/workspaces/{workspace_id}` | `{name?, layout}` | `persist_workspace`: upsert the shell's layout envelope `{version, savedAt, session}` into SQLite `workspaces.layout` → `{saved, workspace_id, saved_at}` (400 bad id/envelope, 413 over 256 KiB) |
+| `GET` | `/api/v1/workspaces/{workspace_id}` | – | Restore on launch: `{workspace_id, name, layout, created_at}`, 404 when nothing is saved |
 | `WS` | `/api/v1/ws?session_id={uuid}` | – | Event stream (below). Closes with 1008 for a non-UUID session. |
 
 `ui_context` is optional. When omitted, `ui_context.active_surface` is filled from the session's latest `wm.state.focused_app_id`.
@@ -169,7 +171,7 @@ The shell must therefore ack **every** `ui.command`, including refusals. `engine
 
 | Item | Owner | Note |
 |---|---|---|
-| `GET/PUT /api/v1/wm/layout` (restore/save layout) | Window manager | Today `sessionPersistence.ts` covers it client-side |
+| `GET/PUT /api/v1/workspaces/{id}` (layout restore/save) | Window manager | Live shell uses `wm/desktopStore.tsx` + `wm/workspacePersistence.ts` (`nexus-desktop-v1` cache + SQLite `workspaces.layout`) |
 | `POST /api/v1/voice/tts` (Piper) | Voice | STT stays in the browser and sends text to `/agent/runs` |
 | `POST /api/v1/web/search`, `/web/browse` | Web search | Register them as tools too, so the agent can call them |
 | `GET/POST /api/v1/files…` | Layout | |

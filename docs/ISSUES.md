@@ -100,8 +100,8 @@ Goal: close every incomplete checkpoint from the original MVP plan before starti
 
 | #                                                                                   | Issue                                                   | Pri | Status |
 | ----------------------------------------------------------------------------------- | ------------------------------------------------------- | --- | ------ |
-| [#28](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/issues/28) | SQLite-backed workspace persistence (persist_workspace) | p2  | ⬜     |
-| [#33](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/issues/33) | Remove the superseded legacy window manager generation  | p2  | ⬜     |
+| [#28](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/issues/28) | SQLite-backed workspace persistence (persist_workspace) | p2  | ✅     |
+| [#33](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/issues/33) | Remove the superseded legacy window manager generation  | p2  | ✅     |
 
 ### Voice
 

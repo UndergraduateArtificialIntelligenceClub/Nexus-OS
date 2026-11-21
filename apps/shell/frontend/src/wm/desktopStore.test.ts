@@ -304,7 +304,9 @@ describe('persistence', () => {
     const wmId = store.find('wm')!.id
     store.focus(wmId)
 
-    expect(JSON.parse(localStorage.getItem(KEY)!).instances).toHaveLength(11)
+    const cached = JSON.parse(localStorage.getItem(KEY)!)
+    expect(cached).toMatchObject({ version: 1, savedAt: expect.any(String) })
+    expect(cached.session.instances).toHaveLength(11)
     const loaded = loadDesktop()
     expect(loaded.instances).toHaveLength(11)
     expect(loaded.instances.find((i) => i.appId === 'clock')).toMatchObject({ mode: 'minimized', size: '2x2' })
@@ -318,6 +320,12 @@ describe('persistence', () => {
     expect(loadDesktop().instances.map((i) => i.appId)).toEqual(defaultDesktop().instances.map((i) => i.appId))
   })
 
+  it('ignores a cached envelope from an unknown schema version', () => {
+    localStorage.setItem(KEY, JSON.stringify({ version: 99, savedAt: 'x', session: { instances: [], focusedId: null } }))
+    expect(loadDesktop().instances.map((i) => i.appId)).toEqual(defaultDesktop().instances.map((i) => i.appId))
+  })
+
+  // Also covers the pre-envelope cache format: a bare { instances, focusedId }.
   it('drops saved entries that name unknown apps or sizes', () => {
     localStorage.setItem(
       KEY,
