@@ -4,8 +4,8 @@ Bounded subgraph: plan_queries -> retrieve_sources -> extract_evidence ->
 compare_sources -> rank -> synthesize_with_provenance.
 
 Constraints that make it safe:
-- It only proposes REGISTERED READ-ONLY evidence tools (``memory_lookup``,
-  ``document_read``); there is no web tool and no native adapter path.
+- It proposes scoped memory, document, web search, and page reads through
+  the execution gateway.
 - Retrieved content is evidence, not executable instruction (doc 03 §2):
   excerpts are quoted text behind references; a hostile answer in an
   excerpt cannot produce a proposal or change any status.
@@ -32,7 +32,7 @@ from schemas.contracts import (
 class EvidenceTarget:
     """A resolved evidence target (deterministic, registry-referenceable)."""
 
-    kind: str  # "artifact" | "memory"
+    kind: str  # artifact, memory, web, or page
     args: dict[str, Any] = field(default_factory=dict)
     target_refs: list[str] = field(default_factory=list)
 
@@ -42,11 +42,10 @@ _BRACKET = re.compile(r"\[(.*?)\]")
 
 class DiscoveryAgent:
     def build_proposal(self, packet: TaskPacket, target: EvidenceTarget) -> ToolProposal:
-        """One C4 per worker pass: document_read or memory_lookup."""
-        if target.kind == "artifact":
-            tool_id, version = "document_read", "1"
-        else:
-            tool_id, version = "memory_lookup", "1"
+        """Propose one registered evidence read per worker pass."""
+        tool_id = {"artifact": "document_read", "memory": "memory_lookup",
+                   "web": "search_web", "page": "fetch_page"}[target.kind]
+        version = "1"
         return ToolProposal(
             proposal_id=f"proposal:{packet.task_id}",
             task_id=packet.task_id,
@@ -81,6 +80,16 @@ class DiscoveryAgent:
                         f"{str(match.get('content_excerpt'))[:140]}"
                     )
                     evidence.append(f"memory:{match.get('memory_id')}")
+            elif "results" in output:
+                for hit in output["results"]:
+                    lines.append(f"[{hit['source_name']}] {hit['title']}: {hit['snippet'][:160]}")
+                    evidence.append(hit["url"])
+                if not lines:
+                    lines.append("No web results found for this query.")
+            elif "article" in output:
+                article = output["article"]
+                lines.append(f"[web] {article['title']}: {article['text'][:160]}")
+                evidence.extend(dict.fromkeys((article["original_url"], article["final_url"])))
             elif output.get("text"):  # document_read payload
                 artifact_id = output.get("artifact_id", "artifact")
                 lines.append(
@@ -88,6 +97,8 @@ class DiscoveryAgent:
                     f"{' (truncated)' if output.get('truncated') else ''}"
                 )
                 evidence.append(f"{artifact_id}")
+            for warning in output.get("warnings", []):
+                lines.append(warning["message"])
         if receipt.status.value == "succeeded":
             if lines:
                 summary = " ".join(lines)

@@ -36,6 +36,8 @@ from schemas.contracts import (
     TaskPacket,
 )
 
+_WEB_SEARCH = re.compile(r"(?:please\s+)?search (?:the )?web (?:for )?(.+)", re.I | re.S)
+_PAGE_FETCH = re.compile(r"(?:please\s+)?(?:fetch|read) (?:the )?page (https?://\S+)", re.I)
 _REPORT_VERB = re.compile(r"\b(report|summary|write-up|writeup|document)\b", re.IGNORECASE)
 _RESEARCH_VERB = re.compile(r"\b(research|investigate|find out|compare)\b", re.IGNORECASE)
 _QUESTIONISH = re.compile(r"^(what|where|why|how|who|can|is|does)\b|\?\s*$", re.IGNORECASE)
@@ -54,10 +56,14 @@ _MAX_QUERIES = 3  # bounded plan width (doc 04 rule 7)
 class PlanIntent:
     """Interpreted request shape (data, not prompt text)."""
 
-    kind: str  # knowledge_answer | research | research_report
+    kind: str  # knowledge_answer, research, research_report, search_web, or fetch_page
     objective: str
     topic: str
     queries: list[str] = field(default_factory=list)
+
+    @property
+    def is_web_request(self) -> bool:
+        return self.kind in {"search_web", "fetch_page"}
 
 
 class Supervisor:
@@ -75,6 +81,10 @@ class Supervisor:
     @staticmethod
     def interpret_intent(user_input: str) -> PlanIntent:
         objective = user_input.strip()
+        for pattern, kind in ((_WEB_SEARCH, "search_web"), (_PAGE_FETCH, "fetch_page")):
+            match = pattern.fullmatch(objective)
+            if match:
+                return PlanIntent(kind=kind, objective=objective, topic=match[1].strip())
         wants_report = bool(_REPORT_VERB.search(objective))
         wants_research = bool(_RESEARCH_VERB.search(objective))
         if wants_research and wants_report:
@@ -142,8 +152,6 @@ class Supervisor:
         Synchronous by design (model queries are resolved by the caller via
         :meth:`plan_with_queries` when a provider is configured)."""
         intent = self.interpret_intent(request.user_input)
-        if queries is None:
-            queries = self._deterministic_queries(intent)
         parent = parent_task_ids[0] if parent_task_ids else None
 
         def key(step: str) -> str:
@@ -151,6 +159,23 @@ class Supervisor:
             # replanned attempt is a new execution (new key), doc 03 §7.
             return f"supervised:{request.request_id}:{step}:r{revision}"
 
+        if intent.is_web_request:
+            step = "discovery-0"
+            return [TaskPacket(
+                task_id=f"task:{request.request_id}:{step}:r{revision}",
+                request_id=request.request_id,
+                parent_task_id=parent,
+                assigned_to=AgentRole.discovery,
+                objective=intent.topic,
+                input_refs=[intent.topic] if intent.kind == "fetch_page" else [],
+                allowed_capabilities=[intent.kind],
+                scope=self._scope(),
+                idempotency_key=key(step),
+                attempt=revision,
+            )]
+
+        if queries is None:
+            queries = self._deterministic_queries(intent)
         packets: list[TaskPacket] = []
 
         ground_id = f"task:{request.request_id}:ground:r{revision}"
@@ -223,7 +248,9 @@ class Supervisor:
         """Graph entry used by the main graph: resolves query offers from a
         configured model first (validated), else deterministic split."""
         intent = self.interpret_intent(request.user_input)
-        if intent.kind == "knowledge_answer":
+        if intent.is_web_request:
+            queries = [intent.topic]
+        elif intent.kind == "knowledge_answer":
             # A knowledge answer needs no discovery queries: skip the model
             # entirely (deterministic-first; also keeps offer queues aligned).
             queries = self._deterministic_queries(intent)

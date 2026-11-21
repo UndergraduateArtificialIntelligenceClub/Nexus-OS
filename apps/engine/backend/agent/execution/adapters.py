@@ -14,12 +14,15 @@ from __future__ import annotations
 import json
 import platform
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 from uuid import uuid4
 
 from agent.tools.registry import file_matches
+from agent.tools.web_tools import WebTools
+from search.errors import RetrievalError
+from search.models import FetchPageToolResponse, SearchErrorResponse, SearchWebToolResponse
 
 
 class UnknownOutcomeError(Exception):
@@ -34,6 +37,7 @@ class AdapterContext:
     repos: Any
     settings: Any
     engine_version: str = "0.1.0"
+    web: WebTools = field(default_factory=WebTools)
 
 
 AdapterFn = Callable[[dict[str, Any], AdapterContext], Awaitable[dict[str, Any]]]
@@ -190,7 +194,24 @@ async def document_create(args: dict[str, Any], ctx: AdapterContext) -> dict[str
     }
 
 
+def _web_output(result: SearchWebToolResponse | FetchPageToolResponse | SearchErrorResponse) -> dict:
+    if isinstance(result, SearchErrorResponse):
+        error = result.error
+        raise RetrievalError(error.code, error.message, retryable=error.retryable)
+    return result.model_dump(mode="json")
+
+
+async def search_web(args: dict[str, Any], ctx: AdapterContext) -> dict[str, Any]:
+    return _web_output(await ctx.web.search_web(**args))
+
+
+async def fetch_page(args: dict[str, Any], ctx: AdapterContext) -> dict[str, Any]:
+    return _web_output(await ctx.web.fetch_page(**args))
+
+
 ADAPTERS: dict[str, AdapterFn] = {
+    "python.search_web": search_web,
+    "python.fetch_page": fetch_page,
     "python.system_diagnostics": system_diagnostics,
     "python.file_search": file_search,
     "python.memory_lookup": memory_lookup,

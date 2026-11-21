@@ -60,6 +60,8 @@ def _runtime() -> ApiRuntime:
     global runtime
     if runtime is None:
         runtime = ApiRuntime.build()
+    if hasattr(app.state, "retrieval_tools"):
+        runtime.engine.adapter_context.web = app.state.retrieval_tools
     return runtime
 
 

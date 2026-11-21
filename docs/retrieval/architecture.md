@@ -124,6 +124,7 @@ Windows desktop acceptance test, or production child-process supervisor is claim
 
 After merging AI-Core, one FastAPI lifespan shuts down both the retrieval browser
 and any initialized agent runtime. The canonical `ToolRegistry` stays owned by
-AI-Core; `RetrievalToolRegistry` is a separate facade pending gateway integration.
+AI-Core. Its Python execution adapters use the same retrieval service and browser
+as the HTTP endpoints.
 Packaged startup includes the AI-Core SQL schema and defaults writable engine state
 to `~/.nexus/`, with existing `NEXUS_*` state-path environment overrides respected.
