@@ -1,24 +1,60 @@
+/* Notes widget. Tokens only — the frame belongs to the shell. */
+
 .w-notes {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-xs);
+  min-height: 0;
+  color: var(--ink);
+}
+
+.w-notes-input {
   flex: 1;
   min-height: 0;
   width: 100%;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   background: transparent;
   resize: none;
   padding: 2px 0;
-  font: 14px/1.5 var(--sans);
+  font: 400 var(--fs-body)/1.5 var(--sans);
   color: var(--ink);
 }
 
-.w-notes::placeholder {
+.w-notes-input::placeholder {
   color: var(--muted);
 }
 
-.w-notes:focus {
+.w-notes-input:focus {
   outline: none;
 }
 
-.w-notes:focus-visible {
+.w-notes-input:focus-visible {
   box-shadow: 0 1px 0 var(--accent);
+}
+
+.w-notes-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-sm);
+  min-height: 12px;
+  font: var(--fs-micro) var(--mono);
+  color: var(--muted);
+}
+
+.w-notes-state {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Errors stay ink + `x`; the One-Accent rule keeps teal for focus. */
+.w-notes-state[data-error] {
+  color: var(--ink);
+}
+
+.w-notes-count {
+  white-space: nowrap;
 }
