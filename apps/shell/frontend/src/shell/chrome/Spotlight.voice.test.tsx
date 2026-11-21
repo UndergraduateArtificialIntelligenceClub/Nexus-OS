@@ -1,10 +1,15 @@
 import { fireEvent, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '@/ui/testing/fixtures'
 import { Spotlight } from './Spotlight'
 
 // Spotlight as the voice preview (#35): the transcript is shown for review, Enter sends it
 // as a voice run, Esc cancels without sending.
+
+// jsdom has no layout, so no scrollIntoView; Spotlight calls it to keep the active row visible.
+beforeAll(() => {
+  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
+})
 
 function renderPreview(text = 'open the browser') {
   const onClose = vi.fn()
