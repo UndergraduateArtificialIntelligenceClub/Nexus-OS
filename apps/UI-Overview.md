@@ -65,8 +65,10 @@ behind the widgets.
 - Glass is only for this floating chrome; widgets stay flat.
 
 ## Widgets
-Existing stubs, all following the shared style: Clock (built), Notes, Files,
-Terminal, System Monitor.
+All follow the shared style: Clock, Notes, Files, Terminal, System Monitor. Notes
+persists through the storage seam (AppData files in Tauri, localStorage in the
+browser); Files browses the home folder through plugin-fs, falls back to a
+bundled fixture tree, and previews markdown, text, code, and media.
 
 ## Open Questions for Team Lead
 - ~~Is the agent prompt always visible, or summoned by a key?~~ Summoned (Spotlight).

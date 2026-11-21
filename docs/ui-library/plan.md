@@ -77,7 +77,7 @@ are partially stale (see 1.4).
 | Chrome | Glass MenuBar (honest status words), conditional Dock, ⌘K Spotlight (combobox/listbox, focus trap, grows from origin), FullscreenHost with scrim, AnchorPicker popover | `shell/chrome/*` |
 | Agent | 5-state store, keyword parser fallback (`parseCommand`/`runCommand`), reply bubble with typewriter + polite live region, draggable/flingable ASCII avatar (3×2 face, blink/spin/mouth frames) | `shell/agent/*`, `shell/avatar/*` |
 | Engine contract | Typed REST+WS client with auto-ack of `ui.command` — **built and tested but not wired** (documented in `docs/AI-Core/07-api-flow.md` → "Wiring the shell") | `shell/agent/engineClient.ts`, `types/agentEvents.ts` |
-| Apps | Registry-driven (`AppDef`: label, ASCII glyph, sizes, aliases, fullscreen, component). Clock is polished; notes/terminal/monitor/files are placeholders | `apps/registry.ts`, `internal-apps/*` |
+| Apps | Registry-driven (`AppDef`: label, ASCII glyph, sizes, aliases, fullscreen, component). Clock, Notes, and Files are real: Notes persists through the storage seam (AppData files in Tauri, localStorage in the browser); Files browses the real home folder through plugin-fs, falls back to a bundled fixture tree, and previews markdown/text/code/media with an honest metadata panel for everything else. Terminal and monitor are placeholders | `apps/registry.ts`, `internal-apps/*` |
 | Theme | Semantic CSS custom properties, light/dark/system, no-flash paint, `data-theme` on `<html>` | `theme/tokens.css`, `theme/ThemeProvider.tsx` |
 | Tests | Vitest: 4 files — snap math, session persistence, mock store invariants, engine client | `*.test.ts` |
 
