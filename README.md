@@ -138,7 +138,7 @@ nexus-os/
 
 | Module | Role | Tech |
 |--------|------|------|
-| `apps/shell/frontend` | Desktop canvas, taskbar, widget mounting, gesture/vision pipeline | React 19, TS, Tailwind, Vite, MediaPipe |
+| `apps/shell/frontend` | Desktop canvas, 6×4 widget grid, dock/spotlight, gesture/vision pipeline | React 19, TS, Vite, MediaPipe |
 | `apps/shell/frontend/internal-apps/*/frontend` | Per-app widget UI | React + TS |
 | `apps/shell/frontend/internal-apps/*/backend` | Per-app logic + storage adapter | Python / TS |
 | `apps/engine/backend` | ReAct agent loop, tool dispatch, LLM provider routing, memory | Python 3.11, FastAPI, Pydantic v2, Uvicorn, SQLAlchemy |
@@ -157,7 +157,7 @@ nexus-os/
 NEXUS divides responsibilities across four distinct layers:
 
 ### 1. Presentation Shell: React + TypeScript
-Hosted inside a Tauri webview. Manages the taskbar, widget canvas, z-indexing, window-snapping previews, internal virtual application runtimes, and local camera streams.
+Hosted inside a Tauri webview. Manages the 6×4 widget grid, contextual dock, spotlight launcher, internal virtual application runtimes, and local camera streams.
 
 ### 2. Native Systems Core: Rust + `windows-rs`
 Subscribes to Win32 shell hooks to track active processes and window focus. Manipulates process coordinates via `SetWindowPos`, `ShowWindow`, `BringWindowToTop`.

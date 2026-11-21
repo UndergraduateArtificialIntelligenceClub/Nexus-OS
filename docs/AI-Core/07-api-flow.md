@@ -171,6 +171,7 @@ The shell must therefore ack **every** `ui.command`, including refusals. `engine
 
 | Item | Owner | Note |
 |---|---|---|
+| `GET/PUT /api/v1/workspaces/{id}` (layout restore/save) | Window manager | Live shell uses `wm/desktopStore.tsx` + `wm/workspacePersistence.ts` (`nexus-desktop-v1` cache + SQLite `workspaces.layout`) |
 | `POST /api/v1/voice/tts` (Piper) | Voice | STT stays in the browser and sends text to `/agent/runs` |
 | `POST /api/v1/web/search`, `/web/browse` | Web search | Register them as tools too, so the agent can call them |
 | `GET/POST /api/v1/files…` | Layout | |

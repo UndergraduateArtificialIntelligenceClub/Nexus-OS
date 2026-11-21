@@ -21,40 +21,35 @@ import type { IPCRequest, IPCResponse } from '@nexus/ipc'
 import { WM_IPC_COMMANDS } from '@nexus/ipc'
 ```
 
-## Window-manager commands (Task A3)
+## Window-manager commands
 
-| Command | Args | Success `data` |
-|---------|------|----------------|
-| `get_desktop_state` | `{ monitor? }` | Live `DesktopSession` (shell store snapshot; filter by monitor when set) |
-| `open_app` | `{ app_name, title?, mode?, x?, y?, width?, height? }` | `{ window_id }` |
-| `close_app` | `{ window_id }` | `{ window_id }` |
-| `focus_window` | `{ window_id }` | `{ window_id }` |
-| `move_window` | `{ window_id, x, y }` | `{ window_id }` |
-| `resize_window` | `{ window_id, width, height }` | `{ window_id }` |
-| `set_window_mode` | `{ window_id, mode }` | `{ window_id }` |
-| `switch_workspace` | `{ workspace_id }` | `{ workspace_id }` |
-| `persist_workspace` | `{ name?, layout? }` (ignored in Phase 1) | `{ saved: true }` after immediate flush |
+Command names and arg shapes for desktop control live in `contract.ts`
+(`get_desktop_state`, `open_app`, `close_app`, `focus_window`, `move_window`,
+`resize_window`, `set_window_mode`, `switch_workspace`, `persist_workspace`).
 
-The live grid shell (`wm/desktopStore.tsx`) persists through the engine's REST
-form of `persist_workspace`, `PUT /api/v1/workspaces/{id}`, and restores on
-launch with `GET` (see `modules/window-state/README.md`). The table above is the
-legacy WM-A dispatcher (`wm/desktopIPC.ts`).
+**Live shell status:** the production UI is the 6×4 grid store
+(`apps/shell/frontend/src/wm/desktopStore.tsx`). The free-placement
+`desktopIPC.ts` / `useDesktopIPCBridge.ts` handlers were removed with issue #33.
 
-Non-WM commands `search_web` / `fetch_article` remain in `IPCCommand` but are rejected by the window-manager dispatcher with `error: "not handled by window manager"`.
+Layout persistence uses the engine REST form of `persist_workspace`:
+`PUT /api/v1/workspaces/{id}` / `GET` via `wm/workspacePersistence.ts`
+(SQLite `workspaces.layout`, with `nexus-desktop-v1` localStorage as cache).
+See `modules/window-state/README.md`.
+
+Rust `ipc_dispatch` can still queue WM mutations and cache a snapshot, but the
+shell no longer mounts a free-placement bridge that pushes `DesktopSession` or
+applies those events. Grid-backed Tauri IPC wiring remains a follow-up if needed.
+
+Non-WM commands `search_web` / `fetch_article` remain in `IPCCommand` for the
+search track.
 
 ### Error shape
-Always `{ success: false, error: string }` — never thrown. Covers unknown command, bad/missing args (field named in the message), unknown `window_id`, invalid mode, and non-finite numbers.
-
-### Data flow (Phase 1)
-1. React `DesktopStore` is the source of truth for the internal desktop session.
-2. `createDesktopIPCHandler` maps IPC requests onto store actions / `getSnapshot` / `flush`.
-3. Under Tauri, the shell pushes snapshots via `sync_desktop_state` into a Rust cache.
-4. Rust `ipc_dispatch` serves `get_desktop_state` from that cache and forwards mutations as `nexus://ipc-request` events back to the shell.
-
-**Agent team note:** Prefer `get_desktop_state` against the shell cache (not raw Win32 enumeration) for Phase 1 internal widgets.
+Always `{ success: false, error: string }` — never thrown.
 
 ## How to Add a Feature
 1. Add a variant to `IPCCommand` and `IPCArgsMap` in `contract.ts`.
-2. If it is a WM command, add it to `WM_IPC_COMMANDS` and handle it in `apps/shell/frontend/src/wm/desktopIPC.ts`.
+2. If it is a WM command, add it to `WM_IPC_COMMANDS` and implement the
+   corresponding handler in the **grid** store / future shell bridge (not a
+   resurrected free-placement store).
 3. Add a match arm in Rust `src-tauri/src/commands/window.rs`.
 4. Add a handler in the Python engine when the agent should call it.

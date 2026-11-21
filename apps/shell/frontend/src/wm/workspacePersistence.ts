@@ -9,10 +9,10 @@
  * - **localStorage `nexus-desktop-v1`**: a synchronous cache so the desk paints
  *   immediately on boot, and the fallback when the engine is not running.
  *
- * Both hold the same versioned envelope `{ version, savedAt, session }` (the
- * shape `sessionPersistence.ts` introduced), so either copy can restore the
- * other. On launch the newer copy wins, unless the user has already changed
- * the desk, in which case the local layout is kept and pushed.
+ * Both hold the same versioned envelope `{ version, savedAt, session }`, so
+ * either copy can restore the other. On launch the newer copy wins, unless the
+ * user has already changed the desk, in which case the local layout is kept
+ * and pushed.
  */
 
 import type { AppInstance, DesktopState } from './desktopStore'

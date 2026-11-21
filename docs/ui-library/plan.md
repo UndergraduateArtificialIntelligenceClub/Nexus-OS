@@ -107,37 +107,25 @@ face, glyphs, mono typography. **This is open decision D-11 (§9).**
 
 ### 1.3 Problems, inconsistencies, technical debt
 
-**Dead / legacy code from the Phase-1 WM track (superseded by the grid shell):**
-
-- `App.tsx`, `components/` (WindowFrame with title bar + resize handles,
-  WorkspaceCanvas, Taskbar, SnapPreview), `index.css` (dark `#0b0c10` + cyan `#66fcf1`
-  theme that contradicts DESIGN.md).
-- `wm/MockDesktopProvider.tsx`, `wm/mockDesktopStore.ts(+test)`, `wm/DesktopStoreAPI.ts`,
-  `wm/DesktopStoreContext.tsx`, `wm/appRegistry.tsx`, `wm/snap.ts(+test)`,
-  `wm/arrange.ts`, `wm/sessionPersistence.ts(+test)`.
-- `types/WindowState.ts` imports `@nexus/window-state`, a workspace package that does
-  not exist in the root `package.json` workspaces.
-- Nothing is imported from any of the above by `main.tsx` — none of it is live.
-
-**Two competing WM contracts in the tree:** legacy `DesktopStoreAPI` (window ids,
-x/y, workspaces, monitors, free placement) vs. the live `desktopStore` (appId-keyed,
-grid cells, three modes). Two app registries: `wm/appRegistry.tsx` vs. `apps/registry.ts`.
+**Legacy Phase-1 WM track — removed (issue #33):** the free-placement
+`DesktopStoreAPI` stack (`windowStore`, legacy `DesktopProvider`, snap/arrange,
+sessionPersistence, desktopIPC bridge), `types/WindowState.ts` shell re-export,
+and `internal-apps/window-manager/` inspector were deleted. The shell has **one**
+WM: `wm/desktopStore.tsx` + `wm/layout.ts` + `apps/registry.ts` +
+`internal-apps/wm/`.
 
 **Kept for later (not dead):** `modules/window-state/types.ts` (`WindowState` with
 x/y/width/height, `isExternal`) is the cross-runtime contract for engine/Rust and
-Phase-5 native windows. The shell simply no longer renders free-floating windows.
+Phase-5 native windows. The shell does not import or render that model.
 
-**Documentation gaps:**
+**Documentation gaps (remaining):**
 
-- `docs/window-manager/plan.md` describes a 12×8 drag/resize/taskbar MVP; nothing
-  marks it superseded by the grid shell.
-- Root README still says "taskbar, window-snapping previews"; `docs/architecture.md`
-  defers to it.
-- `apps/shell/frontend/README.md` says "No test runner configured" — Vitest is
-  configured with 4 test files.
+- Root README may still mention a permanent taskbar / free snapping in places;
+  prefer `apps/shell/frontend/PRODUCT.md` and `DESIGN.md`.
 - `apps/UI-Overview.md` credits the design system to "UI/UX Pro Max" (a tool
   artifact); `DESIGN.md` is the real spec.
-- Nothing documents that `App.tsx`/`components/`/`index.css` are dead.
+- `docs/window-manager/plan.md` is a short superseded decision record pointing at
+  the live grid WM.
 
 **Code-level debt:**
 
@@ -637,13 +625,10 @@ Consumption rule: apps import from `@/ui` only. `theme/`, `hooks/`, `types/` sta
 where they are (cross-cutting, referenced by docs). Internal `shell/chrome` may use
 the library; the library may never import `shell/`.
 
-**Phase-0 cleanup (separate, mechanical, first PR):** delete/quarantine `App.tsx`,
-`components/`, `index.css`, `wm/MockDesktopProvider.tsx`, `mockDesktopStore.ts(+test)`,
-`DesktopStoreAPI.ts`, `DesktopStoreContext.tsx`, `wm/appRegistry.tsx`,
-`wm/snap.ts(+test)` (move snap-math tests under `layout.ts`), `wm/arrange.ts`,
-`sessionPersistence.ts(+test)`, the `types/WindowState.ts` re-export; drop
-`lucide-react` and `tailwindcss` from `package.json`; mark
-`docs/window-manager/plan.md` as superseded with a header note.
+**Phase-0 cleanup:** issue #33 removed the free-placement WM generation and the
+orphaned `window-manager` inspector. Live WM remains
+`wm/desktopStore.tsx` + `wm/layout.ts`. `docs/window-manager/plan.md` is a
+superseded decision record.
 
 ---
 
@@ -757,8 +742,8 @@ map, code).
 
 ## 11. Final implementation blueprint (session-ready)
 
-1. **PR-0 (mechanical):** legacy purge + dependency removal + doc headers marking
-   superseded plans. Zero visual change.
+1. **PR-0 (mechanical):** legacy free-placement WM purge (issue #33) + doc headers
+   marking superseded plans. Zero visual change.
 2. **PR-1 (foundations):** tokens v2 + self-hosted fonts + motion/timing tokens +
    z-ladder promotion + `ui/` restructure with barrel + RTL setup + `ui/README.md`
    (contribution rules: token-only values, reduced-motion checklist, same-path rule,
