@@ -63,6 +63,9 @@ class EngineSettings:
     auto_approve_reversible_write: bool = field(
         default_factory=lambda: _env_bool("NEXUS_AUTO_APPROVE_REVERSIBLE_WRITES", False)
     )
+    auto_approve_network_tools: bool = field(
+        default_factory=lambda: _env_bool("NEXUS_AUTO_APPROVE_NETWORK_TOOLS", False)
+    )
     # Main-graph safety bounds (doc 03: a loop must end).
     max_replan_count: int = field(
         default_factory=lambda: int(_env("NEXUS_MAX_REPLANS", "2"))

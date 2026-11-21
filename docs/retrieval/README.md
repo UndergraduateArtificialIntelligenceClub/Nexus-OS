@@ -3,8 +3,12 @@
 NEXUS now has two Python retrieval tools and a versioned HTTP API. `search_web`
 finds source links through a browser adapter; `fetch_page` reads a public page,
 using headless Chromium when HTML extraction requires JavaScript rendering.
-The AI-Core and shell are present from main; connecting retrieval to the policy
-gateway and desktop UI remains a separate workstream.
+AI-Core Discovery can propose either tool through the execution gateway. For
+example, submit “Search the web for desktop retrieval” or “Fetch page
+https://example.org/article” as an agent request. Discovery returns excerpts
+and source URLs. Each network request requires approval by default. Set
+`NEXUS_AUTO_APPROVE_NETWORK_TOOLS=1` before startup to allow automatic
+approval of scoped web reads. The provider and retrieval mode still apply.
 
 The fastest complete demonstration uses **synthetic fixtures with real Chromium**.
 Live page retrieval works separately. Live Google search is disabled by default
@@ -117,7 +121,7 @@ Chromium but no AI model, account login, or search API key.
 | Public-only HTTP page retrieval and text extraction | Implemented; public-page smoke checks performed |
 | Managed Chromium and filtered JavaScript rendering | Implemented; local integration tests and a public-page rendering check performed |
 | Google result parser and adapter | Fixture-tested; live attempt blocked by Google access challenge |
-| Agent reasoning, confirmation, run streaming, chat UI | AI-Core and shell implementation merged from main; retrieval gateway integration pending |
+| Agent reasoning, confirmation, run streaming, chat UI | AI-Core and shell implementation merged from main; Discovery web requests use the execution gateway |
 | Native backend package | macOS ARM64 package smoke-tested |
 | Windows CI/package and Tauri MSI | Workflow prepared; Windows execution and Tauri integration remain pending |
 

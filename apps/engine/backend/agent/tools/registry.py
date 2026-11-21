@@ -18,6 +18,9 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from search.models import (
+    FetchPageToolRequest, FetchPageToolResponse, SearchWebToolRequest, SearchWebToolResponse,
+)
 from schemas.contracts import (
     IdempotencyPolicy,
     RiskClass,
@@ -190,6 +193,34 @@ _ENTRIES: tuple[ToolEntry, ...] = (
         timeout_ms=10_000,
         idempotency=IdempotencyPolicy.key_required,
         adapter_id="python.document_create",
+    ),
+    ToolEntry(
+        tool_id="search_web",
+        version="1",
+        capability_group="network.web",
+        description="Search public webpages for source URLs and excerpts.",
+        input_model=SearchWebToolRequest,
+        output_keys=tuple(SearchWebToolResponse.model_fields),
+        risk=RiskClass.read_only,
+        side_effect=False,
+        allowed_targets=("public_web",),
+        timeout_ms=60_000,
+        idempotency=IdempotencyPolicy.not_required,
+        adapter_id="python.search_web",
+    ),
+    ToolEntry(
+        tool_id="fetch_page",
+        version="1",
+        capability_group="network.web",
+        description="Read bounded text from a public webpage.",
+        input_model=FetchPageToolRequest,
+        output_keys=tuple(FetchPageToolResponse.model_fields),
+        risk=RiskClass.read_only,
+        side_effect=False,
+        allowed_targets=("public_web",),
+        timeout_ms=60_000,
+        idempotency=IdempotencyPolicy.not_required,
+        adapter_id="python.fetch_page",
     ),
     # Native entry demonstrating the typed seam into Rust (doc 01 native layer).
     ToolEntry(

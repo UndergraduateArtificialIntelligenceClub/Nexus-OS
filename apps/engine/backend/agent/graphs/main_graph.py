@@ -394,6 +394,8 @@ def build_main_graph(services: CoreServices):
         }
 
     def _route_for(user_input: str, settings: Any) -> Route:
+        if services.supervisor.interpret_intent(user_input).is_web_request:
+            return Route.supervised
         match = recipe_module.match_recipe(user_input, settings)
         if match is not None and not match.clarify_question:
             return Route.fast_direct
