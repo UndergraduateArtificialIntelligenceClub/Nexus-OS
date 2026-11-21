@@ -1,0 +1,4 @@
+audio/synth/
+voices/
+.venv/
+results/*selftest*

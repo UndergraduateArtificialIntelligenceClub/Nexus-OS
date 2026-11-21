@@ -107,7 +107,7 @@ Goal: close every incomplete checkpoint from the original MVP plan before starti
 
 | #                                                                                   | Issue                                             | Pri | Status |
 | ----------------------------------------------------------------------------------- | ------------------------------------------------- | --- | ------ |
-| [#34](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/issues/34) | Voice architecture decision spike (STT/TTS stack) | p0  | ⬜     |
+| [#34](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/issues/34) | Voice architecture decision spike (STT/TTS stack) | p0  | 🟨 decided (a) Web Speech + Piper/edge-tts: [decision](voice/decision.md) · [plan](voice/plan.md); bench pending |
 | [#35](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/issues/35) | Speech-to-text mic capture wired to agent runs    | p0  | ⬜     |
 | [#36](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/issues/36) | Text-to-speech output (Piper or edge-tts)         | p1  | ⬜     |
 | [#37](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/issues/37) | Full voice loop end-to-end test                   | p0  | ⬜     |

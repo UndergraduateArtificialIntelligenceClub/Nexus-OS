@@ -165,12 +165,47 @@ The shell must therefore ack **every** `ui.command`, including refusals. `engine
 - Call `pushWmState()` from the desktop store subscription.
 - Keep `parseCommand`/`runCommand` as the offline fallback while the engine isn't running.
 
+## Voice
+
+**Decided** in [`docs/voice/decision.md`](../voice/decision.md) (issue #34): option (a). Speech recognition is the shell's Web Speech API (`SpeechRecognition`). Speech output goes through the engine (Piper or edge-tts, chosen in #36). Implementation plan: [`docs/voice/plan.md`](../voice/plan.md).
+
+```
+mic button / push-to-talk ─▶ SpeechInput (wraps SpeechRecognition)      agent.state: listening
+  └─▶ transcript preview (Enter submits, Esc cancels)
+        └─▶ POST /api/v1/agent/runs {text, source:"voice"}   (unchanged)   agent.state: thinking …
+              └─▶ run.response.speech ─▶ SpeechSink.speak(text)
+                    ├─▶ POST /api/v1/voice/tts {text, voice?} ─▶ audio/wav ─▶ playback   agent.state: speaking until playback ends
+                    └─▶ muted / endpoint down: silent, the reply bubble only (the run is unaffected)
+listening starts while speaking ─▶ SpeechSink.stop() (barge-in)
+```
+
+| Method | Path | Body | Returns | Status |
+|---|---|---|---|---|
+| `POST` | `/api/v1/voice/tts` | `{text, voice?}` | `audio/wav` | Planned (#36) |
+
+**What leaves the machine.** Nexus sends only the final transcript to the engine; it never uploads audio. The recognizer is the webview's, though, and Chromium's streams mic audio to its vendor's speech service: Microsoft in WebView2/Edge, Google in Chrome. Voice input therefore needs network access and is not private to the device. The mic tooltip says so.
+
+**STT error states** (each shown explicitly by the mic control; typed input always keeps working):
+
+| State | Cause |
+|---|---|
+| `unsupported` | No `SpeechRecognition` in this webview, or `language-not-supported` |
+| `permission-denied` | `not-allowed` / `service-not-allowed` (mic blocked) |
+| `service-unreachable` | `network`: the vendor speech service. Known on WebView2 Runtime 153 ([WebView2Feedback #5724](https://github.com/MicrosoftEdge/WebView2Feedback/issues/5724)) |
+| `engine-unreachable` | Transcript ready but `POST /agent/runs` failed; the transcript is kept for retry |
+
+`no-speech` and `aborted` just return to idle.
+
+**Speech sink.** One shell `SpeechSink` speaks everything: run replies now, attention/proactive alerts later (M3). If `/voice/tts` fails or times out, or the user muted voice in Settings, it falls back to the silent reply bubble and never fails the run.
+
+Latency and word error rate are measured by `scripts/voice-bench/` (`webspeech.html` + `bench.py --backend tts`). The full loop, including the engine run, is #37.
+
 ## Not in this layer (owned by other tracks)
 
 | Item | Owner | Note |
 |---|---|---|
 | `GET/PUT /api/v1/wm/layout` (restore/save layout) | Window manager | Today `sessionPersistence.ts` covers it client-side |
-| `POST /api/v1/voice/tts` (Piper) | Voice | STT stays in the browser and sends text to `/agent/runs` |
+| `POST /api/v1/voice/tts` (Piper) | Voice | STT stays in the browser (Web Speech) and sends text to `/agent/runs`; see **Voice** above |
 | `POST /api/v1/web/search`, `/web/browse` | Web search | Register them as tools too, so the agent can call them |
 | `GET/POST /api/v1/files…` | Layout | |
 

@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Web Speech bench · Nexus voice (#34)</title>
+<style>
+  :root { color-scheme: light dark; font: 15px/1.5 system-ui, sans-serif; }
+  body { max-width: 760px; margin: 2rem auto; padding: 0 1rem; }
+  .phrase { font-size: 1.8rem; font-weight: 600; margin: 1rem 0; min-height: 2.6rem; }
+  button { font: inherit; padding: .5rem 1rem; margin-right: .5rem; }
+  .meter { height: 8px; background: #8884; border-radius: 4px; overflow: hidden; margin: .5rem 0 1rem; }
+  .meter > div { height: 100%; width: 0; background: #3a8; transition: width 50ms; }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+  th, td { text-align: left; padding: .25rem .5rem; border-bottom: 1px solid #8884; }
+  .warn { color: #c60; } .err { color: #c33; }
+  code { font-size: .9em; }
+</style>
+</head>
+<body>
+<h1>Web Speech bench</h1>
+<p>Read each phrase aloud after pressing <b>Start</b>, then stop talking. Timing runs from the moment your voice drops below the
+level threshold (measured from the mic directly) to the recognizer's final result. Run it in the browser or webview you
+ship in. In Tauri, open this page in the shell window; in a browser, serve this folder over <code>http://localhost</code>.</p>
+<p id="support"></p>
+
+<div>Phrase <span id="index">–</span> / <span id="count">–</span></div>
+<div class="phrase" id="phrase">Loading phrases…</div>
+<div class="meter"><div id="level"></div></div>
+<button id="start" disabled>Start (Space)</button>
+<button id="skip" disabled>Skip</button>
+<button id="redo" disabled>Redo last</button>
+<button id="download" disabled>Download results</button>
+<p id="status"></p>
+
+<table>
+  <thead><tr><th>id</th><th>transcript</th><th>end of speech → final</th><th>speechend event → final</th><th>WER</th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+
+<script>
+// Mirrors TurnResult in bench.py so `bench.py --merge` can read the download.
+const SILENCE_RMS = 0.015;     // mic level treated as silence (0..1)
+const HANGOVER_MS = 2500;      // give up waiting for a final result this long after speech ends
+const $ = (id) => document.getElementById(id);
+const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+let phrases = [];
+let i = 0;
+const turns = [];
+let busy = false;
+
+function wer(ref, hyp) {
+  const norm = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+  const r = norm(ref), h = norm(hyp);
+  if (!r.length) return h.length ? 1 : 0;
+  let prev = Array.from({ length: h.length + 1 }, (_, j) => j);
+  r.forEach((rw, ri) => {
+    const cur = [ri + 1];
+    h.forEach((hw, hj) => cur.push(Math.min(prev[hj + 1] + 1, cur[hj] + 1, prev[hj] + (rw !== hw))));
+    prev = cur;
+  });
+  return prev[h.length] / r.length;
+}
+
+// Mic level from a separate getUserMedia stream: the recognizer doesn't expose audio.
+let analyser = null, lastVoiceAt = 0, voiced = false;
+async function startMeter() {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+  const ctx = new AudioContext();
+  analyser = ctx.createAnalyser();
+  analyser.fftSize = 1024;
+  ctx.createMediaStreamSource(stream).connect(analyser);
+  const buf = new Float32Array(analyser.fftSize);
+  const tick = () => {
+    analyser.getFloatTimeDomainData(buf);
+    const rms = Math.sqrt(buf.reduce((s, v) => s + v * v, 0) / buf.length);
+    $('level').style.width = Math.min(100, rms * 400) + '%';
+    if (rms > SILENCE_RMS) { lastVoiceAt = performance.now(); voiced = true; }
+    requestAnimationFrame(tick);
+  };
+  tick();
+}
+
+function show() {
+  $('count').textContent = phrases.length;
+  if (i >= phrases.length) {
+    $('index').textContent = phrases.length;
+    $('phrase').textContent = 'Done. Download the results.';
+    $('start').disabled = $('skip').disabled = true;
+  } else {
+    $('index').textContent = i + 1;
+    $('phrase').textContent = phrases[i].text;
+    $('start').disabled = $('skip').disabled = busy;
+  }
+  $('redo').disabled = busy || !turns.length;
+  $('download').disabled = !turns.length;
+}
+
+function addRow(t) {
+  const tr = document.createElement('tr');
+  const ms = (v) => (v == null ? '–' : Math.round(v) + ' ms');
+  tr.innerHTML = `<td>${t.phrase_id}</td><td class="${t.error ? 'err' : ''}"></td><td>${ms(t.stt_ms)}</td>` +
+    `<td>${ms(t.extra.speechend_to_final_ms)}</td><td>${t.wer == null ? '–' : Math.round(t.wer * 100) + '%'}</td>`;
+  tr.children[1].textContent = t.error || t.transcript;
+  $('rows').appendChild(tr);
+}
+
+function runTurn(phrase) {
+  return new Promise((resolve) => {
+    const rec = new Recognition();
+    rec.lang = 'en-US';
+    rec.continuous = false;
+    rec.interimResults = true;
+    rec.maxAlternatives = 1;
+    const marks = {};
+    let transcript = '', error = null, settled = false, watchdog = null;
+    voiced = false;
+    const t0 = performance.now();
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearInterval(watchdog);
+      const endOfSpeech = voiced ? lastVoiceAt : null;
+      const final = marks.final ?? null;
+      resolve({
+        phrase_id: phrase.id, backend: 'webspeech', audio_ms: endOfSpeech && marks.voiceStart ? endOfSpeech - marks.voiceStart : 0,
+        transcript: transcript.trim(),
+        stt_ms: final != null && endOfSpeech != null ? final - endOfSpeech : null,
+        first_audio_ms: null, total_ms: null, connect_ms: null,
+        wer: error ? null : wer(phrase.text, transcript),
+        error,
+        extra: {
+          speechend_to_final_ms: final != null && marks.speechend != null ? final - marks.speechend : null,
+          start_to_audiostart_ms: marks.audiostart != null ? marks.audiostart - t0 : null,
+          first_interim_after_voice_ms: marks.firstInterim != null && marks.voiceStart != null ? marks.firstInterim - marks.voiceStart : null,
+        },
+      });
+    };
+
+    rec.onaudiostart = () => (marks.audiostart = performance.now());
+    rec.onspeechstart = () => (marks.voiceStart = marks.voiceStart ?? performance.now());
+    rec.onspeechend = () => (marks.speechend = performance.now());
+    rec.onresult = (e) => {
+      const now = performance.now();
+      if (marks.firstInterim == null) marks.firstInterim = now;
+      transcript = Array.from(e.results).map((r) => r[0].transcript).join(' ');
+      if (e.results[e.results.length - 1].isFinal) marks.final = now;
+    };
+    rec.onerror = (e) => (error = `SpeechRecognitionError: ${e.error}${e.message ? ' ' + e.message : ''}`);
+    rec.onend = finish;
+    // Watchdog: some engines never fire onend after a network error.
+    watchdog = setInterval(() => {
+      if (voiced && performance.now() - lastVoiceAt > HANGOVER_MS + 5000) { error = error || 'timeout'; rec.abort(); finish(); }
+    }, 250);
+    rec.start();
+  });
+}
+
+async function start() {
+  if (busy || i >= phrases.length) return;
+  busy = true; show();
+  $('status').textContent = 'Listening… read the phrase, then stop.';
+  const t = await runTurn(phrases[i]);
+  turns.push(t); addRow(t);
+  $('status').textContent = t.error ? `Error: ${t.error}` : '';
+  if (t.error) $('status').className = 'err'; else $('status').className = '';
+  i += 1; busy = false; show();
+}
+
+function download() {
+  const doc = {
+    meta: {
+      started_at: new Date().toISOString(),
+      backends: { webspeech: { userAgent: navigator.userAgent, lang: 'en-US', silence_rms: SILENCE_RMS } },
+    },
+    turns,
+  };
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' }));
+  a.download = `webspeech-${new Date().toISOString().replace(/[:.]/g, '').slice(0, 15)}Z.json`;
+  a.click();
+}
+
+$('start').onclick = start;
+$('skip').onclick = () => { i += 1; show(); };
+$('redo').onclick = () => { turns.pop(); $('rows').lastElementChild?.remove(); i = Math.max(0, i - 1); show(); };
+$('download').onclick = download;
+document.addEventListener('keydown', (e) => { if (e.code === 'Space' && e.target === document.body) { e.preventDefault(); start(); } });
+
+(async () => {
+  if (!Recognition) {
+    $('support').innerHTML = '<span class="err">This browser/webview has no SpeechRecognition. That is itself a result: note the user agent.</span>';
+    $('phrase').textContent = navigator.userAgent;
+    return;
+  }
+  $('support').innerHTML = `<span class="warn">SpeechRecognition present (${navigator.userAgent.match(/(Edg|Chrome|Safari)\/[\d.]+/g)?.join(' ') || 'unknown engine'}). Audio is sent to the vendor's speech service.</span>`;
+  try {
+    phrases = (await (await fetch('phrases.json')).json()).phrases;
+    await startMeter();
+  } catch (e) {
+    $('phrase').textContent = `Setup failed: ${e}`;
+    return;
+  }
+  show();
+})();
+</script>
+</body>
+</html>

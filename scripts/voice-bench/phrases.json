@@ -1,0 +1,17 @@
+{
+  "description": "Scripted phrase set for the voice bench (issue #34) and the voice E2E test (#37). Each phrase is something a user says to the Nexus shell; reply is a fixed answer so TTS cost is comparable across backends.",
+  "phrases": [
+    { "id": "p01", "text": "open the browser", "reply": "Opening the browser." },
+    { "id": "p02", "text": "close the clock", "reply": "Closed the clock." },
+    { "id": "p03", "text": "minimize the notes app", "reply": "Notes is minimized." },
+    { "id": "p04", "text": "make the terminal bigger", "reply": "The terminal is bigger now." },
+    { "id": "p05", "text": "tidy up my desktop", "reply": "Tidied up." },
+    { "id": "p06", "text": "show the calendar full screen", "reply": "Here is your calendar." },
+    { "id": "p07", "text": "set a timer for ten minutes", "reply": "Timer set for ten minutes." },
+    { "id": "p08", "text": "what is on my calendar this afternoon", "reply": "You have two meetings this afternoon, at two and at four." },
+    { "id": "p09", "text": "search the web for the weather in Edmonton", "reply": "Searching the web for the weather in Edmonton." },
+    { "id": "p10", "text": "switch to dark mode", "reply": "Dark mode is on." },
+    { "id": "p11", "text": "summarize the article I have open in the browser", "reply": "Here is a short summary of the article. It covers three main points, and I have put them in the notes panel for you." },
+    { "id": "p12", "text": "yes go ahead", "reply": "Done." }
+  ]
+}
