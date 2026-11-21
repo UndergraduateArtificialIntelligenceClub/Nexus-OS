@@ -102,7 +102,9 @@ def test_fast_run_streams_full_lifecycle(client):
     assert {event["run_id"] for event in events} == {run_id}
     assert {event["session_id"] for event in events} == {SESSION}
     types = [event["type"] for event in events]
-    assert types[0] == "agent.state" and events[0]["data"] == {"state": "listening"}
+    assert types[0] == "agent.updated"  # the run's supervisor agent exists first
+    first_state = next(e for e in events if e["type"] == "agent.state")
+    assert first_state["data"] == {"state": "listening"}
     states = [e["data"]["state"] for e in events if e["type"] == "agent.state"]
     assert states[:2] == ["listening", "thinking"]
     assert "acting" in states and states[-2:] == ["speaking", "idle"]

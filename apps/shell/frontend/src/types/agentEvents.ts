@@ -15,6 +15,26 @@ export type TaskStatus = 'queued' | 'running' | 'done' | 'failed' | 'skipped'
 
 export type RunOutcome = 'ok' | 'failed' | 'cancelled'
 
+/** Roster status of one engine agent (not the avatar - see AgentStateName). */
+export type AgentStatus = 'idle' | 'running' | 'waiting' | 'done' | 'error'
+
+/** One engine agent: `supervisor` per run, or one worker per task.
+ *  Contract: docs/agents-manager/agent-identity.md. */
+export interface AgentIdentity {
+  /** `supervisor:<run_id>` or the task id. Stable for the agent's lifetime. */
+  agent_id: string
+  /** supervisor | discovery | knowledge | desktop | recipe */
+  role: string
+  label: string
+  status: AgentStatus
+  /** When the current status began (ISO 8601). */
+  since: string
+  owner_run_id: string
+  /** Short text: what it is doing now, or how it ended. */
+  last_activity: string
+  updated_at: string
+}
+
 export type UiAction =
   | 'open_app'
   | 'close_app'
@@ -98,6 +118,8 @@ export type RunInterruptEvent = WsEnvelope<'run.interrupt', Interrupt>
 export type RunResponseEvent = WsEnvelope<'run.response', RunResponse>
 export type RunCompletedEvent = WsEnvelope<'run.completed', { status: RunOutcome }>
 export type RunErrorEvent = WsEnvelope<'run.error', { error: ApiError }>
+/** Full identity on every change; upsert by agent_id. */
+export type AgentUpdatedEvent = WsEnvelope<'agent.updated', AgentIdentity>
 
 export type ServerEvent =
   | AgentStateEvent
@@ -107,6 +129,7 @@ export type ServerEvent =
   | RunResponseEvent
   | RunCompletedEvent
   | RunErrorEvent
+  | AgentUpdatedEvent
 
 // --- client -> server -------------------------------------------------------
 

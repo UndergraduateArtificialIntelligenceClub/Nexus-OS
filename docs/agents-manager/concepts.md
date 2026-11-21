@@ -94,6 +94,7 @@ The current orb is *the* avatar. Options to discuss with the Agent team:
 
 1. Does the engine's agent model have identities stable enough for a roster
    (`agent id`, `label`, `status`, `since`)? If not, what's the minimal shape?
+   **Answered (issue #54):** see [agent-identity.md](agent-identity.md).
 2. Are pause/resume/cancel technically honest today, or aspirational? Roster
    rows must never show verbs the engine can't perform.
 3. Scheduled duties: engine-side or shell-side timers?
