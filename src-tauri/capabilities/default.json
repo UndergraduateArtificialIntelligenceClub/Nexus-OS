@@ -1,0 +1,44 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Desktop shell: read the home folder, keep app storage under AppData, and hand files to the system opener.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "process:default",
+    "fs:default",
+    "opener:default",
+    {
+      "identifier": "fs:allow-read-dir",
+      "allow": ["$HOME", "$HOME/**"]
+    },
+    {
+      "identifier": "fs:allow-read-text-file",
+      "allow": ["$HOME", "$HOME/**"]
+    },
+    {
+      "identifier": "fs:allow-stat",
+      "allow": ["$HOME", "$HOME/**"]
+    },
+    {
+      "identifier": "fs:allow-mkdir",
+      "allow": ["$APPDATA/storage", "$APPDATA/storage/**"]
+    },
+    {
+      "identifier": "fs:allow-exists",
+      "allow": ["$APPDATA/storage", "$APPDATA/storage/**"]
+    },
+    {
+      "identifier": "fs:allow-write-text-file",
+      "allow": ["$APPDATA/storage", "$APPDATA/storage/**"]
+    },
+    {
+      "identifier": "fs:allow-remove",
+      "allow": ["$APPDATA/storage", "$APPDATA/storage/**"]
+    },
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [{ "path": "$HOME/**" }]
+    }
+  ]
+}

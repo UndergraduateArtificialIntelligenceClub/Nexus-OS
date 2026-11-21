@@ -1,7 +1,7 @@
 use std::process::Command;
 use tauri::AppHandle;
 
-pub fn spawn_engine(app: &AppHandle) -> Result<(), String> {
+pub fn spawn_engine(_app: &AppHandle) -> Result<(), String> {
     let _ = Command::new("python")
         .args(["apps/engine/backend/main.py"])
         .spawn()
