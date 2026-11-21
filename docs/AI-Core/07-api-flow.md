@@ -191,10 +191,13 @@ listening starts while speaking ─▶ SpeechSink.stop() (barge-in)
 |---|---|
 | `unsupported` | No `SpeechRecognition` in this webview, or `language-not-supported` |
 | `permission-denied` | `not-allowed` / `service-not-allowed` (mic blocked) |
-| `service-unreachable` | `network`: the vendor speech service. Known on WebView2 Runtime 153 ([WebView2Feedback #5724](https://github.com/MicrosoftEdge/WebView2Feedback/issues/5724)) |
+| `mic-unavailable` | `audio-capture`: no microphone, or it couldn't be opened |
+| `service-unreachable` | `network`, a throwing `start()`, or no answer within 5 s of starting: the vendor speech service. Known on WebView2 Runtime 153 ([WebView2Feedback #5724](https://github.com/MicrosoftEdge/WebView2Feedback/issues/5724)) |
 | `engine-unreachable` | Transcript ready but `POST /agent/runs` failed; the transcript is kept for retry |
 
 `no-speech` and `aborted` just return to idle.
+
+**Shell side (implemented, #35):** `src/shell/voice/speechInput.ts` wraps the recognizer; `voice/voiceStore.tsx` holds the state; `chrome/MicButton.tsx` is the menu-bar control. Click toggles listening. Hold **Ctrl+Shift+Space** (⌘⇧Space on macOS) to talk, and release to finish. **Esc** cancels listening, the preview, or an error. The preview is Spotlight prefilled with the transcript, with "ask" leading; Enter sends it as `ask(text, {source:"voice"})`. Until INT-1 wires the engine client, the run goes to the local keyword agent; after INT-1, `AgentRun` passes `meta.source` to `engineClient.startRun(text, source)`.
 
 **Speech sink.** One shell `SpeechSink` speaks everything: run replies now, attention/proactive alerts later (M3). If `/voice/tts` fails or times out, or the user muted voice in Settings, it falls back to the silent reply bubble and never fails the run.
 

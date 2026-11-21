@@ -18,6 +18,12 @@ Decision: [`decision.md`](decision.md). Wire contract: [`07-api-flow.md` § Voic
 
 ## 2. #35: speech-to-text mic capture wired to agent runs
 
+**Status: implemented on `voice-tts`**, except the `startRun` hookup, which waits on INT-1 (§2.4). What shipped differs from the design below in four places:
+- The store is `voice/voiceStore.tsx` (it has the React provider); the fake is `voice/fakeSpeechRecognition.ts`.
+- Watchdogs: 5 s for the engine to start (else `service-unreachable`), and 4 s after `stop()` for the final result (else the interim text is delivered). There is no blanket 8 s limit, so a long silent push-to-talk hold isn't an error.
+- There is a fifth error state, `mic-unavailable` (`audio-capture`).
+- No global `SpeechRecognition` type declaration: `speechInput.ts` declares the subset it uses (`RecognitionLike`).
+
 ### 2.1 What exists today
 
 | Piece | Where | State |
@@ -75,7 +81,7 @@ Recognition lives in a small wrapper, so the rest of the shell never touches `Sp
 | #35 criterion | Covered by |
 |---|---|
 | Mic control replacing the MenuBar placeholder | `MicButton` (toggle + push-to-talk) |
-| Final transcript → `engineClient.startRun(text, 'voice')` | `voiceStore.submit` → `ask(…, {source:'voice'})` → `startRun` after INT-1; local agent until then |
+| Final transcript → `engineClient.startRun(text, 'voice')` | `voiceStore.submit` → `agent.ask(text, {source:'voice'})` → `AgentRun(text, agent, {source:'voice'})`. **Open:** the one-line `startRun(text, meta.source)` call lands with INT-1; until then the local keyword agent answers |
 | Explicit permission-denied / unsupported / engine-unreachable states | `speechInput` error mapping + `voiceStore` `engine-unreachable`, plus `service-unreachable` for WebView2 |
 | Transcript preview; Esc cancels | Spotlight prefill |
 | "Only text leaves the browser", documented | 07 § Voice, "What leaves the machine", **reworded** (see `decision.md`): Nexus sends only text, but the recognizer's vendor receives audio |

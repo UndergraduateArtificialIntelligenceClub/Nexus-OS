@@ -27,13 +27,17 @@ interface SpotlightProps {
   /** What opened it: the sheet grows out of this and focus returns to it. */
   origin: HTMLElement | null
   onClose: () => void
+  /** Voice preview mode (#35): the transcript to review. Enter sends it, Esc cancels. */
+  voice?: { text: string; id: number }
+  /** Sends a reviewed voice transcript (instead of a typed ask). */
+  onVoiceSubmit?: (text: string) => void
 }
 
 /**
  * Ask Nexus, or reach any app. A glass sheet that grows from whatever opened it and
  * shrinks back to it. Replies are spoken by the avatar, not printed here.
  */
-export function Spotlight({ open, origin, onClose }: SpotlightProps) {
+export function Spotlight({ open, origin, onClose, voice, onVoiceSubmit }: SpotlightProps) {
   const [present, setPresent] = useState(open)
   const reduced = useReducedMotion()
   const scrimRef = useRef<HTMLDivElement>(null)
@@ -84,11 +88,15 @@ export function Spotlight({ open, origin, onClose }: SpotlightProps) {
         className="nx-spotlight-sheet nx-glass"
         role="dialog"
         aria-modal="true"
-        aria-label="Ask Nexus"
+        aria-label={voice ? 'Review what you said' : 'Ask Nexus'}
         style={{ opacity: 0 }}
         inert={!open}
       >
         <SpotlightBody
+          // A new transcript remounts the body so the field starts from it.
+          key={voice ? `voice-${voice.id}` : 'typed'}
+          voice={voice}
+          onVoiceSubmit={onVoiceSubmit}
           onClose={(focus) => {
             if (focus) returnFocus.current = focus
             onClose()
@@ -99,15 +107,22 @@ export function Spotlight({ open, origin, onClose }: SpotlightProps) {
   )
 }
 
-function SpotlightBody({ onClose }: { onClose: Close }) {
+interface SpotlightBodyProps {
+  onClose: Close
+  voice?: { text: string; id: number }
+  onVoiceSubmit?: (text: string) => void
+}
+
+function SpotlightBody({ onClose, voice, onVoiceSubmit }: SpotlightBodyProps) {
   const { state, store } = useDesktop()
   const agent = useAgent().store
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(voice?.text ?? '')
   const [active, setActive] = useState(0)
   const listId = useId()
   const listRef = useRef<HTMLUListElement>(null)
 
-  const sections = useMemo(() => buildSections(query, state.instances), [query, state.instances])
+  // In the voice preview the transcript is a request, so "ask" always leads.
+  const sections = useMemo(() => buildSections(query, state.instances, !!voice), [query, state.instances, voice])
   const rows = sections.flatMap((s) => s.rows)
   const current = rows[Math.min(active, rows.length - 1)] as Row | undefined
   const rowId = (r: Row) => `${listId}-${r.key}`
@@ -123,6 +138,12 @@ function SpotlightBody({ onClose }: { onClose: Close }) {
 
   const run = (row: Row) => {
     if (row.kind === 'ask') {
+      if (voice && onVoiceSubmit) {
+        // Submit first, so closing doesn't read as "cancelled".
+        onVoiceSubmit(row.text)
+        onClose()
+        return
+      }
       onClose()
       agent.ask(row.text)
       return
@@ -143,7 +164,8 @@ function SpotlightBody({ onClose }: { onClose: Close }) {
     if (e.key === 'Escape') {
       e.preventDefault()
       e.stopPropagation()
-      if (query) setQuery('')
+      // Voice preview: Esc cancels the phrase outright. Typed: clear first, then close.
+      if (query && !voice) setQuery('')
       else onClose()
       return
     }
@@ -167,9 +189,9 @@ function SpotlightBody({ onClose }: { onClose: Close }) {
     <div className="nx-spotlight-body" onKeyDown={onKeyDown}>
       <label className="nx-spotlight-field">
         <span className="nx-spotlight-mark" aria-hidden="true">
-          &gt;
+          {voice ? 'voice' : '>'}
         </span>
-        <span className="sr-only">Ask Nexus or find an app</span>
+        <span className="sr-only">{voice ? 'What you said. Edit it, then press Enter to send' : 'Ask Nexus or find an app'}</span>
         <input
           role="combobox"
           aria-expanded="true"
@@ -228,7 +250,7 @@ function SpotlightBody({ onClose }: { onClose: Close }) {
           </span>
           <span>
             <kbd>esc</kbd>
-            {query ? 'clear' : 'close'}
+            {voice ? 'cancel' : query ? 'clear' : 'close'}
           </span>
         </p>
       )}
@@ -324,7 +346,7 @@ function describe(it?: AppInstance) {
  * Empty query: what's on the desk, then everything else. With a query: app matches,
  * plus an "ask" row that leads when the query reads like a sentence.
  */
-function buildSections(query: string, instances: AppInstance[]): Section[] {
+function buildSections(query: string, instances: AppInstance[], preferAsk = false): Section[] {
   const live = new Map(instances.filter((i) => !i.exiting).map((i) => [i.appId, i] as const))
   const appRow = (appId: AppId): Row => ({ kind: 'app', key: appId, appId, instance: live.get(appId) })
   const q = query.trim().toLowerCase()
@@ -344,7 +366,7 @@ function buildSections(query: string, instances: AppInstance[]): Section[] {
   }).map(appRow)
   const ask: Section = { title: 'ask nexus', rows: [{ kind: 'ask', key: 'ask', text: query.trim() }] }
   const apps: Section = { title: 'apps', rows: matches }
-  const sentence = /\s/.test(q) || matches.length === 0
+  const sentence = preferAsk || /\s/.test(q) || matches.length === 0
   return (sentence ? [ask, apps] : [apps, ask]).filter((s) => s.rows.length)
 }
 

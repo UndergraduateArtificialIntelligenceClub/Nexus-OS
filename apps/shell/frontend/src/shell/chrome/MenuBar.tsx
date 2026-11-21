@@ -3,6 +3,7 @@ import { useTheme } from '@/theme'
 import { AgentStatus } from '@/ui'
 import { useAgent } from '../agent/agentStore'
 import { AnchorPicker } from './AnchorPicker'
+import { MicButton } from './MicButton'
 
 export const IS_MAC = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
 export const MOD = IS_MAC ? '⌘' : 'Ctrl'
@@ -28,10 +29,8 @@ export function MenuBar({ onAsk, onToggleTheme }: MenuBarProps) {
         <AgentStatus status={state.status} className="nx-menubar-status" />
       </div>
       <div className="nx-menubar-group">
-        {/* Voice and the engine aren't connected yet; say so instead of faking it. */}
-        <span className="nx-menubar-item" title="Voice input isn't connected yet">
-          mic off
-        </span>
+        <MicButton />
+        {/* The engine isn't connected yet (INT-1); say so instead of faking it. */}
         <span className="nx-menubar-item" title="The local keyword agent is answering; the engine isn't connected yet">
           engine local
         </span>

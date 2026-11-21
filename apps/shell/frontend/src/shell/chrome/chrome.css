@@ -95,6 +95,72 @@
   background: var(--hover);
 }
 
+/* --- Mic (voice input, #35) --- */
+
+.nx-mic-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nx-mic {
+  gap: 6px;
+}
+
+.nx-mic-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.nx-mic[data-phase='listening'] {
+  background: var(--accent-soft);
+}
+
+.nx-mic[data-phase='listening'] .nx-mic-dot {
+  background: var(--accent);
+  animation: nx-mic-pulse 1.2s ease-in-out infinite;
+}
+
+.nx-mic[data-error] {
+  color: var(--warn);
+}
+
+.nx-mic[data-error] .nx-mic-dot {
+  background: var(--warn);
+}
+
+.nx-mic:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+/* The words so far, while listening. */
+.nx-mic-interim {
+  max-width: 28ch;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+
+@keyframes nx-mic-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nx-mic[data-phase='listening'] .nx-mic-dot {
+    animation: none;
+  }
+}
+
+.nx-desktop[data-reduced] .nx-mic[data-phase='listening'] .nx-mic-dot {
+  animation: none;
+}
+
 /* Small windows: the status words go first, the controls stay. */
 @media (max-width: 760px) {
   .nx-menubar-item:not(.nx-menubar-clock) {

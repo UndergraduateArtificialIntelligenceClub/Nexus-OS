@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ThemeProvider, useReducedMotion, useTheme } from '@/theme'
 import { DesktopProvider, useDesktop } from '@/wm/desktopStore'
 import { AgentProvider, useAgent, type AgentRun } from './agent/agentStore'
@@ -8,9 +8,11 @@ import { AgentAvatar, AVATAR_SIZE } from './avatar/AgentAvatar'
 import { Dock } from './chrome/Dock'
 import { FullscreenHost } from './chrome/FullscreenHost'
 import { MenuBar } from './chrome/MenuBar'
+import { usePushToTalk } from './chrome/MicButton'
 import { Spotlight } from './chrome/Spotlight'
 import { DotField, type Soul } from './DotField'
 import { InstanceHost } from './InstanceHost'
+import { createVoiceStore, VoiceProvider } from './voice/voiceStore'
 import { WidgetGrid } from './WidgetGrid'
 
 /** The whole screen. Providers first, then the layers back to front. */
@@ -30,6 +32,8 @@ function AgentLayer() {
   const { store: desktop } = useDesktop()
   const [dockSummon, setDockSummon] = useState(0)
 
+  // `meta.source` is 'voice' for spoken requests. INT-1 replaces the local keyword agent with
+  // `engineClient.startRun(text, meta.source)`; until then voice text runs locally too.
   const run: AgentRun = (text, agent) =>
     runCommand(text, {
       desktop,
@@ -49,6 +53,8 @@ function AgentLayer() {
 interface SpotlightState {
   open: boolean
   origin: HTMLElement | null
+  /** Set when Spotlight is the voice preview: the transcript to review. */
+  voice?: { text: string; id: number }
 }
 
 function DesktopScreen({ dockSummon, summonDock }: { dockSummon: number; summonDock: () => void }) {
@@ -67,7 +73,28 @@ function DesktopScreen({ dockSummon, summonDock }: { dockSummon: number; summonD
   const openSpotlight = useCallback((origin?: HTMLElement | null) => {
     setSpot({ open: true, origin: origin ?? document.querySelector<HTMLElement>('[data-spotlight-origin]') })
   }, [])
-  const closeSpotlight = useCallback(() => setSpot((s) => ({ ...s, open: false })), [])
+
+  // Voice input: a final transcript opens Spotlight as its preview (Enter sends, Esc cancels).
+  const previewId = useRef(0)
+  const [voice] = useState(() =>
+    createVoiceStore({
+      submit: (text) => agent.ask(text, { source: 'voice' }),
+      onTranscript: (text) =>
+        setSpot({
+          open: true,
+          origin: document.querySelector<HTMLElement>('[data-mic-origin]'),
+          voice: { text, id: ++previewId.current },
+        }),
+      onListeningChange: (listening) => (listening ? agent.listen() : agent.stopListening()),
+    }),
+  )
+  usePushToTalk(voice, !spot.open)
+
+  const closeSpotlight = useCallback(() => {
+    // Closing the voice preview without sending is Esc-to-cancel.
+    if (voice.getState().phase === 'preview') voice.cancel()
+    setSpot((s) => ({ ...s, open: false }))
+  }, [voice])
 
   // Desktop-wide keys. Layers that handle a key themselves (Spotlight, the dock, the
   // avatar picker) stop it before it reaches here.
@@ -105,23 +132,31 @@ function DesktopScreen({ dockSummon, summonDock }: { dockSummon: number; summonD
   }, [spot.open, desk, desktop, agent, openSpotlight, closeSpotlight, summonDock])
 
   return (
-    <div
-      className="nx-desktop"
-      data-reduced={reduced || undefined}
-      data-focus={agentState.anchor === 'center' || undefined}
-      data-avatar={agentState.anchor}
-    >
-      <DotField theme={theme} reduced={reduced} soul={soul} />
-      <MenuBar onAsk={openSpotlight} onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
-      <main className="nx-stage" inert={spot.open || undefined}>
-        <WidgetGrid />
-      </main>
-      <FullscreenHost />
-      <InstanceHost />
-      <AgentAvatar onOpen={openSpotlight} />
-      <Dock suppressed={spot.open} summon={dockSummon} onApps={openSpotlight} />
-      <Spotlight open={spot.open} origin={spot.origin} onClose={closeSpotlight} />
-    </div>
+    <VoiceProvider store={voice}>
+      <div
+        className="nx-desktop"
+        data-reduced={reduced || undefined}
+        data-focus={agentState.anchor === 'center' || undefined}
+        data-avatar={agentState.anchor}
+      >
+        <DotField theme={theme} reduced={reduced} soul={soul} />
+        <MenuBar onAsk={openSpotlight} onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
+        <main className="nx-stage" inert={spot.open || undefined}>
+          <WidgetGrid />
+        </main>
+        <FullscreenHost />
+        <InstanceHost />
+        <AgentAvatar onOpen={openSpotlight} />
+        <Dock suppressed={spot.open} summon={dockSummon} onApps={openSpotlight} />
+        <Spotlight
+          open={spot.open}
+          origin={spot.origin}
+          onClose={closeSpotlight}
+          voice={spot.voice}
+          onVoiceSubmit={(text) => void voice.submit(text)}
+        />
+      </div>
+    </VoiceProvider>
   )
 }
 
