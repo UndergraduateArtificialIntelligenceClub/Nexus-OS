@@ -1,20 +1,22 @@
 import { useCallback, useState } from 'react'
-import { MediaSurface, SearchField, SourceBadge } from '@/ui'
-import type { AppProps } from '@/apps/types'
+import { ArticleReader, MediaSurface, SearchField, VideoPlayer, useDesktopCommands } from '@/ui'
+import type { AppMode, AppProps } from '@/apps/types'
+import { showInWidget } from '@/apps/mediaInbox'
 import type { Size } from '@/wm/layout'
-import type { ArticleBlock } from '@/types/agentEvents'
 import { fixtureSource, type BrowserSource, type ReadPayload, type SearchPayload } from './source'
 import './browser.css'
 
 // The headless browser widget: renders the typed payloads the search team's
 // tools produce (search results, article blocks, images, video) through the
 // media kit. The engine isn't wired yet — the data comes from the BrowserSource
-// seam, currently the offline fixture source.
+// seam, currently the offline fixture source. Articles and video can be sent on
+// to their own widgets (reader, video) through the media inbox.
 
 type View = { kind: 'home' } | { kind: 'search'; payload: SearchPayload } | { kind: 'read'; payload: ReadPayload; url: string }
 
 export function BrowserApp({ size, mode }: AppProps) {
   const wide = size === '4x2' || mode === 'fullscreen'
+  const commands = useDesktopCommands()
   const [view, setView] = useState<View>({ kind: 'home' })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -44,6 +46,7 @@ export function BrowserApp({ size, mode }: AppProps) {
     <Browser
       source={fixtureSource}
       size={size}
+      mode={mode}
       wide={wide}
       view={view}
       busy={busy}
@@ -51,6 +54,7 @@ export function BrowserApp({ size, mode }: AppProps) {
       onSearch={search}
       onRead={read}
       onHome={() => setView({ kind: 'home' })}
+      onShowInWidget={(payload) => showInWidget(payload, commands)}
     />
   )
 }
@@ -58,6 +62,7 @@ export function BrowserApp({ size, mode }: AppProps) {
 interface BrowserProps {
   source: BrowserSource
   size: Size
+  mode: AppMode
   wide: boolean
   view: View
   busy: boolean
@@ -66,11 +71,16 @@ interface BrowserProps {
   onRead: (source: BrowserSource, url: string) => void
   /** Leave the current page for the search home. */
   onHome: () => void
+  /** Send an article or video to its own widget; answers with the desk's reply. */
+  onShowInWidget: (payload: Extract<ReadPayload, { kind: 'article' | 'video' }>) => string
 }
 
-export function Browser({ source, size, wide, view, busy, error, onSearch, onRead, onHome }: BrowserProps) {
+export function Browser({ source, size, mode, wide, view, busy, error, onSearch, onRead, onHome, onShowInWidget }: BrowserProps) {
   const [query, setQuery] = useState('')
   const [crumb, setCrumb] = useState<string | null>(null)
+  // The desk's answer to "open as widget", for the page it was asked on.
+  const [reply, setReply] = useState<{ view: View; text: string } | null>(null)
+  const page = view.kind === 'read' && view.payload.kind !== 'image' ? view.payload : null
 
   const submit = () => {
     const q = query.trim()
@@ -104,10 +114,20 @@ export function Browser({ source, size, wide, view, busy, error, onSearch, onRea
             ‹ back
           </button>
         )}
+        {page && !busy && (
+          <button type="button" className="w-browser-back" onClick={() => setReply({ view, text: onShowInWidget(page) })}>
+            open as widget
+          </button>
+        )}
       </div>
 
       {busy && <p className="w-browser-note">loading…</p>}
       {error && <p className="w-browser-note" data-error>{error}</p>}
+      {reply?.view === view && (
+        <p className="w-browser-note" role="status">
+          {reply.text}
+        </p>
+      )}
 
       {!busy && !error && view.kind === 'home' && (
         <p className="w-browser-note">search, or open a result — text, images and video come from the source seam.</p>
@@ -117,7 +137,7 @@ export function Browser({ source, size, wide, view, busy, error, onSearch, onRea
         <Results payload={view.payload} wide={wide} compact={size === '2x1'} onRead={(url) => onRead(source, url)} />
       )}
 
-      {!busy && !error && view.kind === 'read' && <Reader payload={view.payload} url={view.url} wide={wide} />}
+      {!busy && !error && view.kind === 'read' && <Reader payload={view.payload} url={view.url} wide={wide} size={size} mode={mode} />}
     </div>
   )
 }
@@ -154,64 +174,29 @@ function Results({
   )
 }
 
-function Reader({ payload, url, wide }: { payload: ReadPayload; url: string; wide: boolean }) {
+function Reader({ payload, url, wide, size, mode }: { payload: ReadPayload; url: string; wide: boolean; size: Size; mode: AppMode }) {
   if (payload.kind === 'article') {
     return (
-      <article className="w-browser-article">
-        <h1 className="w-browser-h1">{payload.title}</h1>
-        <div className="w-browser-blocks">
-          {payload.blocks.map((b, i) => (
-            <Block key={i} block={b} />
-          ))}
-        </div>
-        {payload.evidenceRefs.length > 0 && (
-          <footer className="w-browser-evidence">
-            {payload.evidenceRefs.map((ref) => (
-              <SourceBadge key={ref} source={ref} />
-            ))}
-          </footer>
-        )}
-      </article>
+      <ArticleReader
+        className="w-browser-article"
+        title={payload.title}
+        blocks={payload.blocks}
+        evidenceRefs={payload.evidenceRefs}
+        layoutKey={`${size}:${mode}`}
+      />
     )
   }
   if (payload.kind === 'image') {
     return <MediaSurface src={payload.src} alt={payload.alt} source={payload.source} fit={wide ? 'contain' : 'cover'} caption={url} />
   }
-  // Video: the fixture has no stream, so the poster stands in honestly.
   return (
-    <MediaSurface
-      alt="video poster"
+    <VideoPlayer
+      className="w-browser-player"
+      src={payload.src}
+      poster={payload.poster}
       source={payload.source}
-      caption={payload.src ? undefined : 'stream not available offline'}
-    >
-      {payload.src ? (
-        <video className="w-browser-video" controls src={payload.src} poster={payload.poster} />
-      ) : (
-        <div className="w-browser-video-off" style={payload.poster ? { backgroundImage: `url(${payload.poster})` } : undefined}>
-          <span>video fixture · offline</span>
-        </div>
-      )}
-    </MediaSurface>
+      density={size === '2x1' && !wide ? 'min' : 'full'}
+      mode={mode}
+    />
   )
-}
-
-function Block({ block }: { block: ArticleBlock }) {
-  switch (block.kind) {
-    case 'heading':
-      return block.level === 1 ? (
-        <h2 className="w-browser-h2">{block.text}</h2>
-      ) : (
-        <h3 className="w-browser-h3">{block.text}</h3>
-      )
-    case 'paragraph':
-      return <p className="w-browser-p">{block.text}</p>
-    case 'list':
-      return (
-        <ul className="w-browser-ul">
-          {block.items.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
-      )
-  }
 }

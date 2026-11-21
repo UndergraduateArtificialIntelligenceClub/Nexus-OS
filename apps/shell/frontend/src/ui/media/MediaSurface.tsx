@@ -24,6 +24,11 @@ export interface MediaSurfaceProps {
   className?: string
   /** Content for non-image media (video, article blocks) shown when ready. */
   children?: ReactNode
+  /**
+   * A media element that must stay mounted through every phase so it can load,
+   * e.g. a `<video>`. The state overlay covers it until it's ready.
+   */
+  media?: ReactNode
 }
 
 export function MediaSurface({
@@ -37,8 +42,9 @@ export function MediaSurface({
   source,
   className,
   children,
+  media,
 }: MediaSurfaceProps) {
-  const tracked: MediaPhase = state ?? (src ? 'loading' : children ? 'ready' : 'empty')
+  const tracked: MediaPhase = state ?? (src ? 'loading' : children || media ? 'ready' : 'empty')
   const [phase, setPhase] = useState<MediaPhase>(tracked)
   useEffect(() => setPhase(tracked), [tracked])
 
@@ -56,6 +62,7 @@ export function MediaSurface({
             onError={() => setPhase('error')}
           />
         )}
+        {media}
         {phase !== 'ready' ? (
           <MediaStates state={phase} message={message} onRetry={onRetry} className="nx-media-state" />
         ) : (

@@ -15,10 +15,13 @@ source, so nothing fakes a network.
   `apps/engine/backend/schemas/contracts.py`.
 - The source seam lives in `frontend/src/source.ts`; swap `fixtureSource` for the
   IPC-backed one and the widget needs no changes.
+- Article and video pages have an "open as widget" chip, which calls
+  `showInWidget` (`src/apps/mediaInbox.ts`) to send the payload on to the
+  `reader` or `video` widget. The engine's own widget payloads should use the same call.
 
 ## Tech Stack
 - React 19 + TypeScript + Vite
-- UI library: `MediaSurface`, `SourceBadge`, `SearchField` (from `@/ui`)
+- UI library: `ArticleReader`, `VideoPlayer`, `MediaSurface`, `SearchField`, `useDesktopCommands` (from `@/ui`)
 
 ## Folder Layout
 ```

@@ -11,6 +11,7 @@ export { animate } from './motion/timeline'
 export { AsciiFrame, ENTER_MS, type Phase, type FrameVariant } from './ascii/AsciiFrame'
 export { AsciiSpinner } from './ascii/AsciiSpinner'
 export { AsciiMeter } from './ascii/AsciiMeter'
+export { AsciiSlider, type AsciiSliderProps } from './ascii/AsciiSlider'
 export { AsciiFace, FACES, faceLines, type Face } from './ascii/AsciiFace'
 export { Glyph, APP_GLYPH, MARKS, KEYS, type GlyphName } from './ascii/glyphs'
 
@@ -53,6 +54,8 @@ export { MediaSurface, type MediaSurfaceProps, type MediaPhase } from './media/M
 export { MediaStates, type MediaStatesProps } from './media/MediaStates'
 export { SourceBadge, type SourceBadgeProps } from './media/SourceBadge'
 export { useMediaLifecycle, type MediaLifecycle } from './media/useMediaLifecycle'
+export { ArticleReader, type ArticleReaderProps } from './media/ArticleReader'
+export { VideoPlayer, formatTime, type VideoPlayerProps, type VideoDensity } from './media/VideoPlayer'
 
 // L5 — templates
 export { WidgetTemplate, type WidgetTemplateProps } from './templates/WidgetTemplate'

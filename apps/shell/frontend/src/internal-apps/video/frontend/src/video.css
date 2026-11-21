@@ -1,0 +1,9 @@
+/* Video widget: the player fills the frame; everything else is @/ui's. */
+
+.w-video {
+  height: 100%;
+}
+
+.w-video-empty {
+  height: 100%;
+}
