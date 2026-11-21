@@ -560,9 +560,9 @@ glass-never-on-glass is enforced by a documented rule.
 - The UI library contributes only the components that *display* run/interrupt/task
   state (§3.E).
 
-**Persistence:** `save()` in the store, later swapped for
-`persist_workspace` / `get_desktop_state` IPC as documented in the
-`desktopStore.tsx` header comments. The library never touches persistence.
+**Persistence:** the store writes a localStorage cache and syncs SQLite
+`workspaces.layout` through the engine's `persist_workspace`
+(`wm/workspacePersistence.ts`, issue #28). The library never touches persistence.
 
 ### 6.3 Widget payload contract (engine-side work item)
 

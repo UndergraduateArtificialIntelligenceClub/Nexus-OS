@@ -20,4 +20,6 @@ Apply `schema.sql` to the engine's `nexus_state.db` via SQLAlchemy.
 Add a table to `schema.sql` and create a migration. Update `SessionManager` in the engine.
 
 ## IPC / API Contracts
-None exposed directly; accessed via engine endpoints.
+None exposed directly; accessed via engine endpoints. `workspaces` is read and
+written by `GET/PUT /api/v1/workspaces/{id}` (shell layout persistence, issue
+#28): `layout` holds the shell's versioned JSON envelope verbatim.

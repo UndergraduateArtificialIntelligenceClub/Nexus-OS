@@ -133,6 +133,9 @@ API flow surface (`/api/v1`, full reference in `docs/AI-Core/07-api-flow.md`):
 - `POST /api/v1/agent/runs` -> `202 {run_id}`; progress streams over the socket
 - `GET /api/v1/agent/runs/{run_id}`, `POST .../resume`, `POST .../cancel`
 - `GET /api/v1/tools`, `GET /api/v1/health`
+- `PUT/GET /api/v1/workspaces/{workspace_id}`: shell layout persistence
+  (`persist_workspace` / restore on launch) in SQLite `workspaces.layout`
+  (issue #28). CORS allows only local shell origins (Vite, Tauri).
 - `WS /api/v1/ws?session_id={uuid}`: `agent.state`, `task.progress`,
   `ui.command`, `run.interrupt`, `run.response`, `run.completed`, `run.error`
   out; `ui.command.ack`, `wm.state` in. Approved native tools reach the shell

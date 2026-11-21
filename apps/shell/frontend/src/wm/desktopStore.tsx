@@ -1,13 +1,23 @@
 // Desktop state: which apps are open, where they sit on the grid, and how they're shown.
 // Every command returns a short reply the agent can say back to the user.
 //
-// Saved to localStorage for now. The Window Manager team swaps `save`/`load` for the
-// `persist_workspace` / `get_desktop_state` IPC commands (src/types/ipc.ts).
+// Persistence (./workspacePersistence.ts): every change is written to the localStorage
+// cache at once and, debounced, to SQLite `workspaces.layout` through the engine's
+// `persist_workspace`. On launch the cache paints the desk, then the SQLite copy
+// restores it if newer. Without the engine the cache alone keeps the layout.
 
-import { createContext, useContext, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { getApp, isAppId, nearestSize, type AppId } from '@/apps/registry'
 import type { AppMode } from '@/apps/types'
 import { COLS, ROWS, SIZE_DIMS, SIZE_ORDER, findSlot, fits, intersecting, isSize, pack, type Placement, type Size, type Slot } from './layout'
+import {
+  createEngineWorkspaceBackend,
+  createWorkspaceSync,
+  makeEnvelope,
+  readCache,
+  writeCache,
+  type WorkspaceBackend,
+} from './workspacePersistence'
 
 export interface AppInstance extends Placement {
   appId: AppId
@@ -24,7 +34,6 @@ export interface DesktopState {
 /** A size, or one step up/down from the current size. */
 export type SizeRequest = Size | 'up' | 'down'
 
-const STORAGE_KEY = 'nexus-desktop-v1'
 const MODES: AppMode[] = ['widget', 'fullscreen', 'minimized']
 
 let seq = 0
@@ -292,6 +301,14 @@ export function createDesktopStore(initial: DesktopState) {
     return `no room to put ${label} there.`
   }
 
+  /** Replace the whole desk with a saved one (restore on launch). */
+  const hydrate = (next: DesktopState) => {
+    set({
+      instances: next.instances.filter((i) => !i.exiting).map(({ exiting: _, ...rest }) => rest),
+      focusedId: next.focusedId,
+    })
+  }
+
   const tidy = (): string => {
     const grid = onGrid()
     const packed = pack(grid)
@@ -322,32 +339,29 @@ export function createDesktopStore(initial: DesktopState) {
     focus,
     move,
     tidy,
+    hydrate,
   }
 }
 
 // --- persistence ---
 
+/** Write-through to the localStorage cache. The SQLite copy is synced by the provider. */
 function save(state: DesktopState) {
-  try {
-    const saved: DesktopState = {
-      instances: state.instances.filter((i) => !i.exiting).map(({ exiting: _, ...rest }) => rest),
-      focusedId: state.focusedId,
-    }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(saved))
-  } catch {
-    /* storage unavailable; the layout lasts for this visit only */
-  }
+  writeCache(makeEnvelope(state))
 }
 
-/** Last saved desktop, cleaned up. Falls back to the default layout if it's missing or broken. */
+/** Last cached desktop, cleaned up. Falls back to the default layout if it's missing or broken. */
 export function loadDesktop(): DesktopState {
-  let raw: unknown
-  try {
-    raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')
-  } catch {
-    return defaultDesktop()
-  }
-  if (!raw || typeof raw !== 'object' || !Array.isArray((raw as DesktopState).instances)) return defaultDesktop()
+  const cached = readCache()
+  return (cached && sanitizeDesktop(cached.session)) ?? defaultDesktop()
+}
+
+/**
+ * Validate an untrusted saved desk (cache or SQLite). Drops unknown apps, sizes and
+ * duplicates, and re-packs if the layout no longer fits. Null if it's unusable.
+ */
+export function sanitizeDesktop(raw: unknown): DesktopState | null {
+  if (!raw || typeof raw !== 'object' || !Array.isArray((raw as DesktopState).instances)) return null
 
   const seen = new Set<AppId>()
   const instances: AppInstance[] = []
@@ -373,7 +387,7 @@ export function loadDesktop(): DesktopState {
   const valid = grid.every((it, idx) => fits(grid.slice(0, idx), it.size, it))
   if (!valid) {
     const packed = pack(grid)
-    if (!packed) return defaultDesktop()
+    if (!packed) return null
     const byId = new Map(packed.map((p) => [p.id, p]))
     instances.forEach((it, idx) => (instances[idx] = byId.get(it.id) ?? it))
   }
@@ -389,8 +403,40 @@ export function loadDesktop(): DesktopState {
 
 const DesktopContext = createContext<DesktopStore | null>(null)
 
-export function DesktopProvider({ children, initial }: { children: ReactNode; initial?: DesktopState }) {
+const defaultBackend = (): WorkspaceBackend | null =>
+  // Tests never reach a real engine (a dev engine on :8000 would get their layouts).
+  import.meta.env.MODE === 'test' ? null : createEngineWorkspaceBackend()
+
+export function DesktopProvider({
+  children,
+  initial,
+  backend,
+}: {
+  children: ReactNode
+  initial?: DesktopState
+  /** Where the SQLite copy lives. Defaults to the engine; null keeps it localStorage-only. */
+  backend?: WorkspaceBackend | null
+}) {
   const [store] = useState(() => createDesktopStore(initial ?? loadDesktop()))
+  const [remote] = useState(() => (backend === undefined ? defaultBackend() : backend))
+
+  useEffect(() => {
+    if (!remote) return
+    const sync = createWorkspaceSync(store, { backend: remote, sanitize: sanitizeDesktop })
+    void sync.start()
+    const onPageHide = () => void sync.flush({ keepalive: true })
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') onPageHide()
+    }
+    window.addEventListener('pagehide', onPageHide)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('pagehide', onPageHide)
+      document.removeEventListener('visibilitychange', onVisibility)
+      sync.dispose()
+    }
+  }, [store, remote])
+
   return <DesktopContext.Provider value={store}>{children}</DesktopContext.Provider>
 }
 

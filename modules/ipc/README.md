@@ -35,6 +35,11 @@ import { WM_IPC_COMMANDS } from '@nexus/ipc'
 | `switch_workspace` | `{ workspace_id }` | `{ workspace_id }` |
 | `persist_workspace` | `{ name?, layout? }` (ignored in Phase 1) | `{ saved: true }` after immediate flush |
 
+The live grid shell (`wm/desktopStore.tsx`) persists through the engine's REST
+form of `persist_workspace`, `PUT /api/v1/workspaces/{id}`, and restores on
+launch with `GET` (see `modules/window-state/README.md`). The table above is the
+legacy WM-A dispatcher (`wm/desktopIPC.ts`).
+
 Non-WM commands `search_web` / `fetch_article` remain in `IPCCommand` but are rejected by the window-manager dispatcher with `error: "not handled by window manager"`.
 
 ### Error shape

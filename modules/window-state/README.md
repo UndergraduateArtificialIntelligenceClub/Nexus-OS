@@ -39,3 +39,19 @@ The shell owns save/restore of a full `DesktopSession`. Implementation lives in
 
 Corrupt or unknown-version data is ignored and the seed session is used.
 Malformed individual windows are dropped; focus/z-order invariants are repaired by the store on hydrate.
+
+## Grid shell persistence (issue #28)
+
+The live grid shell (`wm/desktopStore.tsx`) persists through
+`wm/workspacePersistence.ts`, with SQLite as the store of record.
+
+| Detail | Value |
+|--------|--------|
+| Store of record | SQLite `workspaces.layout`, row `default`, via engine `PUT /api/v1/workspaces/{id}` (`persist_workspace`) |
+| Launch load | `GET /api/v1/workspaces/{id}` (1.5s timeout) |
+| Cache / fallback | `localStorage` key `nexus-desktop-v1`, written on every change |
+| Envelope | `{ version: 1, savedAt, session: { instances, focusedId } }`, same in both places; the pre-envelope bare `{ instances, focusedId }` cache is still read |
+| Debounce | 400ms (`REMOTE_SAVE_DEBOUNCE_MS`) for the SQLite write; the cache write is immediate |
+| Boot | `loadDesktop()` paints the cache, then `createWorkspaceSync().start()` restores the SQLite copy if its `savedAt` is newer and the user hasn't touched the desk yet; otherwise the local layout is pushed |
+| Immediate flush | `pagehide`, `visibilitychange` (hidden, `keepalive` fetch), provider unmount |
+| No engine | Every remote failure is swallowed; the cache keeps saving and restoring |
