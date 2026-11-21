@@ -20,21 +20,24 @@ export const WORKING: AgentStateName[] = ['thinking', 'acting', 'speaking', 'lis
 export interface AgentStatusProps {
   status: AgentStateName
   className?: string
+  /** Contextual words for the same wire states (the roster says "error", not "didn't get that"). */
+  labels?: Partial<Record<AgentStateName, string>>
 }
 
 /**
  * Spinner + honest status word. The caller supplies the styling hook: pass a
  * class that turns teal on `[data-status]` (the menu bar does exactly this).
  */
-export function AgentStatus({ status, className }: AgentStatusProps) {
+export function AgentStatus({ status, className, labels }: AgentStatusProps) {
+  const text = labels?.[status] ?? AGENT_STATUS_TEXT[status]
   return (
     <span className={className} data-status={status}>
       {status !== 'idle' && status !== 'error' ? (
-        <AsciiSpinner label={AGENT_STATUS_TEXT[status]} />
+        <AsciiSpinner label={text} />
       ) : (
         <span aria-hidden="true">·</span>
       )}{' '}
-      {AGENT_STATUS_TEXT[status]}
+      {text}
     </span>
   )
 }

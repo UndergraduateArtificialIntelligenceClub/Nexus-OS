@@ -1,0 +1,214 @@
+/* Agents manager. Tokens only — content styles; the shell draws the frame. */
+
+.w-agents {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-sm);
+  min-height: 0;
+  color: var(--ink);
+}
+
+/* --- Header --- */
+
+.w-agents-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-sm);
+  flex-wrap: wrap;
+}
+
+.w-agents-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--s-sm);
+}
+
+.w-agents-summary {
+  color: var(--muted);
+  font-size: var(--fs-micro);
+  text-align: right;
+}
+
+/* --- Split layout --- */
+
+.w-agents-body {
+  flex: 1;
+  display: flex;
+  gap: var(--s-md);
+  min-height: 0;
+}
+
+.w-agents-roster {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.w-agents[data-layout='split'] .w-agents-roster {
+  flex: 0.95;
+}
+
+/* --- Roster rows --- */
+
+.w-agents-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'status label time'
+    'activity activity id';
+  align-items: baseline;
+  gap: 2px var(--s-sm);
+  padding: var(--s-xs) var(--s-sm);
+  border: 1px solid transparent;
+  border-radius: var(--radius-row);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+.w-agents-row:hover {
+  background: var(--accent-soft);
+}
+
+.w-agents-row[aria-current='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.w-agents-state {
+  grid-area: status;
+  color: var(--muted);
+  font: var(--fs-label) var(--mono);
+  white-space: nowrap;
+}
+
+/* Teal is the agent at work; waiting is a decision, also teal. Errors stay ink. */
+.w-agents-row[data-status='acting'] .w-agents-state,
+.w-agents-row[data-status='thinking'] .w-agents-state,
+.w-agents-row[data-status='speaking'] .w-agents-state,
+.w-agents-row[data-status='listening'] .w-agents-state,
+.w-agents-row[data-status='waiting'] .w-agents-state {
+  color: var(--accent);
+}
+
+.w-agents-row[data-status='error'] .w-agents-state {
+  color: var(--ink);
+}
+
+.w-agents-label {
+  grid-area: label;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 var(--fs-body) var(--sans);
+  color: var(--ink);
+}
+
+.w-agents-elapsed {
+  grid-area: time;
+  color: var(--muted);
+  font: var(--fs-micro) var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.w-agents-activity {
+  grid-area: activity;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font: var(--fs-mono) var(--mono);
+}
+
+.w-agents-id {
+  grid-area: id;
+  max-width: 16ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: var(--fs-micro);
+  text-align: right;
+}
+
+/* --- Detail pane --- */
+
+.w-agents-detail {
+  flex: 0.9;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-sm);
+  padding-left: var(--s-md);
+  border-left: 1px solid var(--line);
+  overflow-y: auto;
+}
+
+.w-agents-detail-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-sm);
+}
+
+.w-agents-detail-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 var(--fs-body) var(--sans);
+  color: var(--ink);
+}
+
+.w-agents-detail-status {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-sm);
+}
+
+.w-agents-detail-activity {
+  margin: 0;
+  color: var(--ink);
+  font: var(--fs-mono) var(--mono);
+}
+
+.w-agents-detail-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-xs);
+}
+
+.w-agents-detail-tasks .nx-timeline {
+  margin-top: var(--s-xs);
+}
+
+.w-agents-note {
+  margin: auto 0 0;
+  color: var(--muted);
+  font: var(--fs-micro) var(--mono);
+}
+
+/* --- Empty --- */
+
+.w-agents-empty {
+  flex: 1;
+}

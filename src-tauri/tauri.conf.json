@@ -1,22 +1,43 @@
 {
-  "tauri": {
-    "bundle": {
-      "active": true,
-      "targets": ["msi"],
-      "identifier": "com.nexus.os",
-      "name": "NEXUS OS",
-      "resources": [],
-      "externalBin": [],
-      "icon": []
-    },
-    "security": {
-      "csp": null
-    },
-    "windows": [],
-    "macOSPrivateApi": false
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Nexus OS",
+  "version": "0.1.0",
+  "identifier": "com.nexus.os",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../apps/shell/frontend/dist"
   },
-  "product": {
-    "name": "NEXUS OS",
-    "version": "0.1.0"
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Nexus OS",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 960,
+        "minHeight": 640,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$HOME/**"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
   }
 }

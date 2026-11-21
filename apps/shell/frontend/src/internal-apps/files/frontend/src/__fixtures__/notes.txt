@@ -1,0 +1,12 @@
+Nexus OS fixture notes
+
+The Files widget reads this file through the same source seam the desktop app
+uses. In the browser the data is a fixture; inside Tauri it is the real home
+folder.
+
+Plain text keeps its whitespace, so columns line up:
+
+  app        state
+  clock      real
+  notes      real, persisted
+  files      real, navigable

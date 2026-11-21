@@ -37,6 +37,12 @@ describe('<AgentStatus>', () => {
       ['acting', 'error', 'idle', 'listening', 'speaking', 'thinking', 'waiting'].sort(),
     )
   })
+
+  it('allows custom contextual labels', () => {
+    render(<AgentStatus status="error" labels={{ error: 'error' }} />)
+    expect(screen.getByText('error')).toBeInTheDocument()
+    expect(screen.queryByText("didn't get that")).toBeNull()
+  })
 })
 
 describe('<StreamingText>', () => {
