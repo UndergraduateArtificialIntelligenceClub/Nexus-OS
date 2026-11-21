@@ -1,6 +1,7 @@
 // Every app the shell can open. Add an app here and the grid, agent and tray pick it up.
 
 import { BrowserApp } from '@/internal-apps/browser/frontend/src/App'
+import { AgentsManagerApp } from '@/internal-apps/agents-manager/frontend/src/App'
 import { CalcApp } from '@/internal-apps/calc/frontend/src/App'
 import { CalendarApp } from '@/internal-apps/calendar/frontend/src/App'
 import { ClockApp } from '@/internal-apps/clock/frontend/src/App'
@@ -16,6 +17,16 @@ import { SIZE_ORDER, type Size } from '@/wm/layout'
 import type { AppDef } from './types'
 
 export const APPS = {
+  agents: {
+    label: 'agents',
+    glyph: '[@]',
+    sizes: ['2x1', '2x2', '4x2'],
+    defaultSize: '2x2',
+    aliases: ['agents', 'agent manager', 'agent roster', 'roster', 'duties'],
+    fullscreen: true,
+    phase: 'mvp',
+    component: AgentsManagerApp,
+  },
   clock: {
     label: 'clock',
     glyph: '(:)',
