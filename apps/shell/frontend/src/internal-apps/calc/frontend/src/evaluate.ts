@@ -1,6 +1,6 @@
 // Expression evaluation for the calculator. A tiny shunting-yard: numbers,
-// + − × ÷, % postfix and unary minus. Returns null when the expression is
-// incomplete or divides by zero — the display says so instead of guessing.
+// + − × ÷, % postfix and unary minus. Never guesses: an expression that is
+// unfinished, divides by zero or overflows has no answer, and `solve` says which.
 
 type Tok = { n: number } | { op: string }
 
@@ -68,9 +68,14 @@ function toRPN(toks: Tok[]): Tok[] | null {
   return out
 }
 
-export function evaluate(expr: string): number | null {
+/** Why an expression has no answer: unfinished, a division by zero, or too big to hold. */
+export type SolveError = 'incomplete' | 'div0' | 'overflow'
+
+/** Evaluates `expr`, naming the reason when there is no answer. */
+export function solve(expr: string): { value: number } | { error: SolveError } {
+  const incomplete = { error: 'incomplete' } as const
   const rpn = toRPN(tokenize(expr) ?? [])
-  if (!rpn) return null
+  if (!rpn) return incomplete
   const stack: number[] = []
   for (const t of rpn) {
     if ('n' in t) {
@@ -79,22 +84,29 @@ export function evaluate(expr: string): number | null {
     }
     if (t.op === '%') {
       const a = stack.pop()
-      if (a === undefined) return null
+      if (a === undefined) return incomplete
       stack.push(a / 100)
     } else if (t.op === 'neg') {
       const a = stack.pop()
-      if (a === undefined) return null
+      if (a === undefined) return incomplete
       stack.push(-a)
     } else {
       const b = stack.pop()
       const a = stack.pop()
-      if (a === undefined || b === undefined) return null
+      if (a === undefined || b === undefined) return incomplete
+      if (t.op === '÷' && b === 0) return { error: 'div0' }
       stack.push(t.op === '+' ? a + b : t.op === '-' ? a - b : t.op === '×' ? a * b : a / b)
     }
-    if (stack.length && !Number.isFinite(stack[stack.length - 1])) return null
+    if (!Number.isFinite(stack[stack.length - 1])) return { error: 'overflow' }
   }
-  if (stack.length !== 1) return null
-  return stack[0]
+  if (stack.length !== 1) return incomplete
+  return { value: stack[0] }
+}
+
+/** The answer, or null when there is none (see `solve` for the reason). */
+export function evaluate(expr: string): number | null {
+  const r = solve(expr)
+  return 'value' in r ? r.value : null
 }
 
 /** Formats a result for the display: trims float noise, keeps big numbers readable. */

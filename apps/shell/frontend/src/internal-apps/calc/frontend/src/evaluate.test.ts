@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { evaluate, format } from './evaluate'
+import { evaluate, format, solve } from './evaluate'
 
 // Pure arithmetic: the calculator's honesty lives here — real precedence,
 // postfix %, unary minus, and null (never a guess) for anything incomplete.
@@ -52,5 +52,17 @@ describe('format', () => {
   it('keeps integers plain', () => {
     expect(format(14)).toBe('14')
     expect(format(-2.5)).toBe('-2.5')
+  })
+})
+
+describe('solve', () => {
+  it('names why an expression has no answer', () => {
+    expect(solve('6÷3')).toEqual({ value: 2 })
+    expect(solve('1÷0')).toEqual({ error: 'div0' })
+    expect(solve('2+6÷0×3')).toEqual({ error: 'div0' })
+    expect(solve('0÷0')).toEqual({ error: 'div0' })
+    expect(solve('5+')).toEqual({ error: 'incomplete' })
+    expect(solve('')).toEqual({ error: 'incomplete' })
+    expect(solve('1' + '0'.repeat(200) + '×1' + '0'.repeat(200))).toEqual({ error: 'overflow' })
   })
 })

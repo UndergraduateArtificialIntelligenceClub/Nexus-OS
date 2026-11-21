@@ -780,3 +780,66 @@ map, code).
 backends, the vision/gesture pipeline, native Win32 surfaces (Phase 5 uses
 `modules/window-state` unchanged — the library grows external-window surfaces only
 when that phase lands).
+
+---
+
+## 12. Multi-widget layout sign-off (#32)
+
+Checkpoint: the 6×4 widget grid (`wm/layout.ts`, `wm/desktopStore.tsx`,
+`shell/WidgetGrid.tsx`) holds up with many widgets of mixed sizes across every
+desk command. The freeform `windowStore.ts` model is out of scope.
+
+### Automated pass: `apps/shell/frontend/src/wm/layoutSignoff.test.ts`
+
+After **every** action, `wm/testing/gridInvariants.ts` checks:
+
+| # | Invariant | Result |
+|---|-----------|--------|
+| 1 | Bounds: every on-grid widget sits inside 6×4 | pass |
+| 2 | No overlaps (fullscreen widgets keep their cell) | pass |
+| 3 | Every size, minimized ones included, is one the app declares | pass |
+| 4 | Unique instance ids; one live instance per app | pass |
+| 5 | At most one fullscreen app, and only apps with a fullscreen view | pass |
+| 6 | Focus is `null` or a live widget | pass |
+| 7 | Persistence: `loadDesktop()` gives back exactly the live desk | pass |
+| 8 | `move` moves at most two widgets (never reshuffles); `setSize` touches only its target; refusals change nothing | pass |
+
+| Scenario | What it does | Result |
+|----------|--------------|--------|
+| A. Scripted | 7 widgets (2x2, 2x2, 2x1, 2x1, 1x2, 1x1, 1x1): fullscreen + demote, minimize/restore to same cell, move to free cell, equal-size swap, step-aside, multi-blocker refusal, off-board clamp, in-place and blocked resize, ladder resize that forces a repack, tidy ×2, two relaunches mid-session, close during the exit animation, close all (~50 steps) | pass |
+| B. Dense desk | Default 11-widget layout (22+ of 24 cells): open on a near-full board, grow to 4x2, two fullscreens, minimize ×2, tidy, relaunch, restore, sweep a widget across a row | pass |
+| C. Seeded random | 20 seeds × 300 actions covering every desk command, delayed exit animations and relaunches. Failures print the seed and the last 10 actions | pass (6,000 actions) |
+| D. Checker self-test | Hand-built broken desks (overlap, out of bounds, illegal size, duplicates, two fullscreens, dangling focus, corrupt storage) are each flagged | pass |
+
+**Mutation check:** with `fits()` in `layout.ts` deliberately broken to ignore
+occupancy, 22 of 32 tests fail: A, B and every seed. The 10 checker self-tests
+don't use `fits()`, so they keep passing. The checks catch real regressions.
+
+Run: `cd apps/shell/frontend && npx vitest run src/wm/layoutSignoff.test.ts`
+
+### Manual checklist (`npm run dev`, 6+ widgets on screen)
+
+Covers the pointer and visual layer that the store tests can't see.
+
+- [ ] Drag a widget to a free cell: green preview, card glides into place
+- [ ] Drag onto an equal-size widget: swap preview, both trade places
+- [ ] Drag onto one different-size widget: it steps aside, nothing else moves
+- [ ] Drop onto several widgets: red preview, the orb says why, the card snaps back
+- [ ] Escape mid-drag cancels and the card returns home
+- [ ] Resize by the right edge, the bottom edge and the corner: the preview snaps to the app's sizes
+- [ ] A resize into a neighbour shows a blocked preview and is refused
+- [ ] Hover buttons: fullscreen, minimize and close all work
+- [ ] Keyboard: Esc leaves fullscreen, ⌘Enter toggles fullscreen, ⌘M minimizes; the dock restores
+- [ ] Resizing the window reflows the grid with no overlaps or clipped cards
+- [ ] Reloading the page restores the same layout, sizes, modes and focus
+
+### Findings and blockers
+
+The automated pass found no invariant violations, so no blocker issues have been
+filed. Two observations, neither a blocker:
+
+- Until the first desk change, nothing is saved. A fresh install relaunches to a
+  new default desk with new instance ids each time. The layout is the same, so
+  users see no difference.
+- `open(app, size)` on a minimized app restores it at its old size and ignores the
+  requested size.
