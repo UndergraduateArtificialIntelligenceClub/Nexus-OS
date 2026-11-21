@@ -15,16 +15,20 @@ Engine request statuses (doc 02 vocabulary) are unchanged underneath.
 from __future__ import annotations
 
 import asyncio
+import json
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from agent.core import CoreEngine, CoreRequestResult
+from api.agents import AgentRoster
 from api.events import (
     NODE_AGENT_STATE,
+    PLAN_NODES,
     RESULT_NODES,
     RESULT_TASK_STATUS,
     AgentState,
+    AgentStatus,
     EventType,
     InterruptKind,
     RunOutcome,
@@ -33,7 +37,7 @@ from api.events import (
 )
 from api.hub import SessionHub
 from api.ui_bridge import current_run_id, current_session_id
-from schemas.contracts import RequestEnvelope, utc_now_iso
+from schemas.contracts import RequestEnvelope, TaskPacket, utc_now_iso
 
 TERMINAL = frozenset({"completed", "failed", "cancelled"})
 _YES = {"yes", "y", "approve", "approved", "confirm", "ok", "true"}
@@ -85,9 +89,11 @@ class RunRecord:
 
 
 class RunManager:
-    def __init__(self, engine: CoreEngine, hub: SessionHub) -> None:
+    def __init__(self, engine: CoreEngine, hub: SessionHub,
+                 roster: Optional[AgentRoster] = None) -> None:
         self._engine = engine
         self._hub = hub
+        self._roster = roster or AgentRoster(hub)
         self._runs: OrderedDict[str, RunRecord] = OrderedDict()
         self._graph_lock = asyncio.Lock()
 
@@ -118,6 +124,7 @@ class RunManager:
                            source=source.value)
         self._runs[record.run_id] = record
         self._prune()
+        self._roster.run_running(record.run_id, session_id, text)
         self._spawn(record, self._execute_request(record, envelope))
         return record
 
@@ -129,11 +136,13 @@ class RunManager:
         interrupt = record.interrupt
         if interrupt["kind"] == InterruptKind.confirm.value:
             decision = _decision(answer)
+            activity = f"user {decision} the action"
             work = self._execute_confirm(record, record.approval_id, decision)
         else:
             text = str(answer or "").strip()
             if not text:
                 raise ValueError("a clarify answer must be non-empty text")
+            activity = text
             envelope = RequestEnvelope.from_raw({
                 "session_id": record.session_id,
                 "parent_request_id": record.request_ids[-1],
@@ -144,6 +153,7 @@ class RunManager:
         record.interrupt = None
         record.approval_id = None
         self._touch(record, status="running")
+        self._roster.run_running(record.run_id, record.session_id, activity)
         self._spawn(record, work)
         return record
 
@@ -206,6 +216,9 @@ class RunManager:
                 state = NODE_AGENT_STATE.get(node)
                 if state is not None:
                     self._set_state(record, state)
+            elif kind == "node_finished" and node in PLAN_NODES:
+                self._roster.tasks_planned(record.run_id, record.session_id,
+                                           self._packets((update or {}).get("task_ids")))
             elif kind == "node_finished" and node in RESULT_NODES:
                 for result in (update or {}).get("results") or []:
                     progress = self._task_progress(record, result)
@@ -244,6 +257,7 @@ class RunManager:
     def _pause(self, record: RunRecord, interrupt: dict[str, Any]) -> None:
         record.interrupt = interrupt
         self._touch(record, status="awaiting_input")
+        self._roster.run_waiting(record.run_id, interrupt["message"])
         self._set_state(record, AgentState.waiting)
         self._publish(record, EventType.run_interrupt, interrupt)
 
@@ -256,6 +270,8 @@ class RunManager:
         if result.response_text:
             self._set_state(record, AgentState.speaking)
         self._set_state(record, AgentState.idle)
+        self._roster.run_finished(record.run_id, AgentStatus.done,
+                                  result.response_text or "completed")
         self._publish(record, EventType.run_completed, {"status": RunOutcome.ok.value})
 
     def _fail(self, record: RunRecord, code: str, message: str) -> None:
@@ -264,6 +280,7 @@ class RunManager:
         if not record.errors:
             record.errors = [api_error(code, message)["error"]]
         self._set_state(record, AgentState.error)
+        self._roster.run_finished(record.run_id, AgentStatus.error, message)
         self._publish(record, EventType.run_completed, {"status": RunOutcome.failed.value})
 
     def _finish_cancelled(self, record: RunRecord) -> None:
@@ -275,6 +292,7 @@ class RunManager:
         if record.request_ids:
             self._engine.repos.requests.set_status(record.request_ids[-1], "cancelled")
         self._set_state(record, AgentState.idle)
+        self._roster.run_finished(record.run_id, AgentStatus.done, "cancelled")
         self._publish(record, EventType.run_completed, {"status": RunOutcome.cancelled.value})
 
     # ------------------------------------------------------------------
@@ -305,6 +323,14 @@ class RunManager:
                     tool_id = row["tool_id"]
         return {"task_id": task_id, "tool_id": tool_id, "status": status.value}
 
+    def _packets(self, task_ids: Any) -> list[TaskPacket]:
+        packets = []
+        for task_id in task_ids or []:
+            row = self._engine.repos.tasks.get(task_id)
+            if row is not None:
+                packets.append(TaskPacket.model_validate(json.loads(row["payload"])))
+        return packets
+
     @staticmethod
     def _touch(record: RunRecord, status: str) -> None:
         record.status = status
@@ -320,6 +346,7 @@ class RunManager:
         finished = [run_id for run_id, record in self._runs.items() if record.status in TERMINAL]
         for run_id in finished[: max(0, len(finished) - _MAX_FINISHED_RUNS)]:
             del self._runs[run_id]
+            self._roster.forget_run(run_id)
 
 
 def _decision(answer: Any) -> str:

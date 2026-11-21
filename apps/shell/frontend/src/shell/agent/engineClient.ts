@@ -9,6 +9,7 @@
 //   const { run_id } = await engine.startRun('open browser', 'voice')
 
 import type {
+  AgentIdentity,
   ApiError,
   CreateRunBody,
   RunSource,
@@ -140,6 +141,10 @@ export function createEngineClient(options: EngineClientOptions = {}) {
     cancel: (runId: string) => request<RunView>('POST', `/agent/runs/${runId}/cancel`),
 
     getRun: (runId: string) => request<RunView>('GET', `/agent/runs/${runId}`),
+
+    /** Agent roster for this session; live changes arrive as agent.updated. */
+    listAgents: () =>
+      request<{ agents: AgentIdentity[] }>('GET', `/agents?session_id=${sessionId}`).then((body) => body.agents),
 
     /** Call on every layout change; re-sent automatically after a reconnect. */
     pushWmState: (state: WmState) => {

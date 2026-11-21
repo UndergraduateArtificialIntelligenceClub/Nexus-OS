@@ -67,6 +67,7 @@ apps/engine/backend/
 │   ├── events.py            #   wire vocabulary (event types, agent states, envelope)
 │   ├── hub.py               #   per-session sockets, wm.state, pending ui.command acks
 │   ├── runs.py              #   RunManager: background runs, interrupts, resume, cancel
+│   ├── agents.py            #   AgentRoster: agent identity + status (agent.updated)
 │   ├── ui_bridge.py         #   DesktopBridge over WS: ui.command -> ui.command.ack
 │   └── routes.py            #   /api/v1 router + error shape
 ├── requirements.txt
@@ -132,10 +133,12 @@ AI-Core surface:
 API flow surface (`/api/v1`, full reference in `docs/AI-Core/07-api-flow.md`):
 - `POST /api/v1/agent/runs` -> `202 {run_id}`; progress streams over the socket
 - `GET /api/v1/agent/runs/{run_id}`, `POST .../resume`, `POST .../cancel`
+- `GET /api/v1/agents[?session_id=]`: agent roster (contract in
+  `docs/agents-manager/agent-identity.md`)
 - `GET /api/v1/tools`, `GET /api/v1/health`
 - `WS /api/v1/ws?session_id={uuid}`: `agent.state`, `task.progress`,
-  `ui.command`, `run.interrupt`, `run.response`, `run.completed`, `run.error`
-  out; `ui.command.ack`, `wm.state` in. Approved native tools reach the shell
+  `ui.command`, `run.interrupt`, `run.response`, `run.completed`, `run.error`,
+  `agent.updated` out; `ui.command.ack`, `wm.state` in. Approved native tools reach the shell
   as `ui.command` (no ack in `NEXUS_UI_ACK_TIMEOUT_MS` -> `unknown_outcome`).
 
 Consumed by `src-tauri` sidecar via local HTTP on port 8000.

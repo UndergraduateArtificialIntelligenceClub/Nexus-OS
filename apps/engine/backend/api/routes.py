@@ -4,9 +4,10 @@
     GET  /api/v1/agent/runs/{run_id}           run snapshot
     POST /api/v1/agent/runs/{run_id}/resume    answer an interrupt  -> 202
     POST /api/v1/agent/runs/{run_id}/cancel    stop a run
+    GET  /api/v1/agents[?session_id=]          agent roster (read-only)
     GET  /api/v1/tools                         registered tool contracts
     GET  /api/v1/health
-    WS   /api/v1/ws?session_id={uuid}          events, ui.command(.ack), wm.state
+    WS   /api/v1/ws?session_id={uuid}          events, agent.updated, ui.command(.ack), wm.state
 
 Errors always use ``{"error": {"code", "message", "details"}}``.
 """
@@ -27,6 +28,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from agent.core import CoreEngine
+from api.agents import AgentRoster
 from api.events import CLIENT_EVENTS, EventType, Source, WsEnvelope, api_error
 from api.hub import SessionHub
 from api.runs import RunConflict, RunManager, RunNotFound
@@ -43,6 +45,7 @@ class ApiRuntime:
     engine: CoreEngine
     hub: SessionHub
     runs: RunManager
+    roster: AgentRoster
 
     @classmethod
     def build(cls, settings: Optional[EngineSettings] = None) -> "ApiRuntime":
@@ -50,7 +53,10 @@ class ApiRuntime:
         hub = SessionHub()
         bridge = UiCommandBridge(hub, ack_timeout_seconds=settings.ui_ack_timeout_seconds)
         engine = CoreEngine(settings, desktop_bridge=bridge)
-        return cls(engine=engine, hub=hub, runs=RunManager(engine, hub))
+        roster = AgentRoster(hub)
+        engine.worker.add_listener(roster.on_worker)
+        return cls(engine=engine, hub=hub, runs=RunManager(engine, hub, roster),
+                   roster=roster)
 
     async def aclose(self) -> None:
         await self.engine.aclose()
@@ -142,6 +148,12 @@ def create_v1_router(get_runtime: Callable[[], ApiRuntime]) -> APIRouter:
             return _error(404, "NOT_FOUND", f"run {run_id} does not exist")
         except RunConflict as error:
             return _error(409, "CONFLICT", str(error))
+
+    @router.get("/agents")
+    async def list_agents(session_id: Optional[str] = None):
+        if session_id is not None and not _is_uuid(session_id):
+            return _error(400, "INVALID_INPUT", "session_id must be a UUID")
+        return {"agents": get_runtime().roster.list(session_id)}
 
     @router.get("/tools")
     async def list_tools() -> dict[str, Any]:
