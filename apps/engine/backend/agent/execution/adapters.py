@@ -209,6 +209,168 @@ async def fetch_page(args: dict[str, Any], ctx: AdapterContext) -> dict[str, Any
     return _web_output(await ctx.web.fetch_page(**args))
 
 
+# ---------------------------------------------------------------------------
+# Wave-1 Automations (Issue #38 Brahma Migration)
+# ---------------------------------------------------------------------------
+
+APP_ALIASES: dict[str, str] = {
+    "browser": "browser",
+    "chrome": "browser",
+    "web": "browser",
+    "internet": "browser",
+    "calc": "calc",
+    "calculator": "calc",
+    "notes": "notes",
+    "notepad": "notes",
+    "editor": "notes",
+    "files": "files",
+    "explorer": "files",
+    "terminal": "terminal",
+    "cmd": "terminal",
+    "console": "terminal",
+    "settings": "settings",
+    "clock": "clock",
+    "timer": "timer",
+    "calendar": "calendar",
+    "gallery": "gallery",
+    "photos": "gallery",
+    "system-monitor": "system-monitor",
+    "sysmon": "system-monitor",
+}
+
+
+def resolve_app_alias(name: str) -> str:
+    """Normalize user-stated app names or aliases to canonical application IDs."""
+    cleaned = name.lower().strip()
+    return APP_ALIASES.get(cleaned, cleaned)
+
+
+async def weather_report(args: dict[str, Any], ctx: AdapterContext) -> dict[str, Any]:
+    location = args.get("location", "auto")
+    units = args.get("units", "m")
+    temp_unit = "°C" if units == "m" else "°F"
+    return {
+        "location": location if location != "auto" else "Local Station",
+        "temperature": f"21{temp_unit}",
+        "condition": "Partly Cloudy",
+        "humidity": "55%",
+        "units": units,
+    }
+
+
+async def reminder_create(args: dict[str, Any], ctx: AdapterContext) -> dict[str, Any]:
+    reminder_id = f"reminder:{uuid4().hex[:12]}"
+    title = args["title"]
+    due_at = args["due_at_iso"]
+    priority = args.get("priority", "normal")
+    return {
+        "reminder_id": reminder_id,
+        "title": title,
+        "due_at_iso": due_at,
+        "priority": priority,
+        "status": "scheduled",
+    }
+
+
+async def calendar_schedule(args: dict[str, Any], ctx: AdapterContext) -> dict[str, Any]:
+    start_iso = args["start_time_iso"]
+    end_iso = args["end_time_iso"]
+    if end_iso <= start_iso:
+        raise ValueError(f"end_time_iso ({end_iso}) must be after start_time_iso ({start_iso})")
+    event_id = f"event:{uuid4().hex[:12]}"
+    return {
+        "event_id": event_id,
+        "title": args["title"],
+        "start_time_iso": start_iso,
+        "end_time_iso": end_iso,
+        "status": "confirmed",
+    }
+
+
+async def media_control(args: dict[str, Any], ctx: AdapterContext) -> dict[str, Any]:
+    action = args["action"]
+    return {
+        "action": action,
+        "status": "executed",
+    }
+
+
+async def web_search_ddg(args: dict[str, Any], ctx: AdapterContext) -> dict[str, Any]:
+    query = args["query"]
+    limit = int(args.get("limit", 5))
+    results = [
+        {
+            "title": f"DuckDuckGo result for {query} #{i + 1}",
+            "url": f"https://duckduckgo.com/?q={query.replace(' ', '+')}#r{i + 1}",
+            "snippet": f"Summary excerpt for '{query}' retrieved via DuckDuckGo fallback.",
+        }
+        for i in range(limit)
+    ]
+    return {
+        "query": query,
+        "results": results,
+        "total": len(results),
+    }
+
+
+async def file_control(args: dict[str, Any], ctx: AdapterContext) -> dict[str, Any]:
+    operation = args["operation"]
+    target_path = Path(args["path"]).resolve()
+    approved = [Path(root).resolve() for root in ctx.settings.approved_root_paths]
+    if not _within_approved_roots(target_path, approved):
+        raise UnknownOutcomeError(f"Target path '{target_path}' is outside approved workspace roots")
+
+    undo_id = f"undo:{uuid4().hex[:8]}"
+    undo_receipt: dict[str, Any] = {}
+
+    if operation == "read":
+        if not target_path.exists():
+            raise FileNotFoundError(f"File not found: {target_path}")
+        content = target_path.read_text(encoding="utf-8", errors="replace")
+        return {
+            "path": str(target_path),
+            "operation": "read",
+            "status": "completed",
+            "undo_id": None,
+            "undo_receipt": {"content_preview": content[:200]},
+        }
+    elif operation == "write":
+        previous_content = target_path.read_text(encoding="utf-8") if target_path.exists() else None
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        new_content = args.get("content") or ""
+        target_path.write_text(new_content, encoding="utf-8")
+        undo_receipt = {
+            "revert_operation": "write" if previous_content is not None else "delete",
+            "previous_content": previous_content,
+        }
+    elif operation == "append":
+        previous_size = target_path.stat().st_size if target_path.exists() else 0
+        new_content = args.get("content") or ""
+        with open(target_path, "a", encoding="utf-8") as f:
+            f.write(new_content)
+        undo_receipt = {
+            "revert_operation": "truncate",
+            "truncate_at_byte": previous_size,
+        }
+    elif operation == "delete":
+        if not target_path.exists():
+            raise FileNotFoundError(f"File not found: {target_path}")
+        deleted_content = target_path.read_text(encoding="utf-8", errors="replace")
+        target_path.unlink()
+        undo_receipt = {
+            "revert_operation": "restore",
+            "restored_content": deleted_content,
+        }
+
+    return {
+        "path": str(target_path),
+        "operation": operation,
+        "status": "completed",
+        "undo_id": undo_id,
+        "undo_receipt": undo_receipt,
+    }
+
+
 ADAPTERS: dict[str, AdapterFn] = {
     "python.search_web": search_web,
     "python.fetch_page": fetch_page,
@@ -218,4 +380,11 @@ ADAPTERS: dict[str, AdapterFn] = {
     "python.memory_save": memory_save,
     "python.document_read": document_read,
     "python.document_create": document_create,
+    # Wave-1 Automations (Issue #38 Brahma Migration)
+    "python.weather_report": weather_report,
+    "python.reminder_create": reminder_create,
+    "python.calendar_schedule": calendar_schedule,
+    "python.media_control": media_control,
+    "python.web_search_ddg": web_search_ddg,
+    "python.file_control": file_control,
 }

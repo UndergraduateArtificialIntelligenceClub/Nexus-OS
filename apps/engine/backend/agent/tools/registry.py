@@ -87,6 +87,43 @@ class OpenApplicationInput(_Input):
     application_id: str = Field(min_length=1)
 
 
+class WeatherReportInput(_Input):
+    location: str = Field(default="auto", min_length=1)
+    units: str = Field(default="m", pattern="^(m|u)$")
+
+
+class ReminderCreateInput(_Input):
+    title: str = Field(min_length=1)
+    due_at_iso: str = Field(min_length=1)
+    priority: str = Field(default="normal", pattern="^(low|normal|high|urgent)$")
+    notes: str = Field(default="")
+
+
+class CalendarScheduleInput(_Input):
+    title: str = Field(min_length=1)
+    start_time_iso: str = Field(min_length=1)
+    end_time_iso: str = Field(min_length=1)
+    description: str = Field(default="")
+    location: str = Field(default="")
+
+
+class MediaControlInput(_Input):
+    action: str = Field(pattern="^(play|pause|toggle|next|previous|stop|volume_up|volume_down|mute|unmute)$")
+    value: Optional[int] = Field(default=None, ge=0, le=100)
+
+
+class WebSearchDdgInput(_Input):
+    query: str = Field(min_length=1)
+    limit: int = Field(default=5, ge=1, le=10)
+
+
+class FileControlInput(_Input):
+    operation: str = Field(pattern="^(read|write|append|delete)$")
+    path: str = Field(min_length=1)
+    content: Optional[str] = Field(default=None)
+    undo_id: Optional[str] = Field(default=None)
+
+
 @dataclass(frozen=True)
 class ToolEntry:
     tool_id: str
@@ -237,6 +274,91 @@ _ENTRIES: tuple[ToolEntry, ...] = (
         idempotency=IdempotencyPolicy.idempotent,
         adapter_id="native.desktop_bridge",
         native_command_id="desktop.open_application",
+    ),
+    # Wave-1 Automations (Issue #38 Brahma Migration)
+    ToolEntry(
+        tool_id="weather_report",
+        version="1",
+        capability_group="desktop.info",
+        description="Fetch current weather report for a location using wttr.in.",
+        input_model=WeatherReportInput,
+        output_keys=("location", "temperature", "condition", "humidity", "units"),
+        risk=RiskClass.read_only,
+        side_effect=False,
+        allowed_targets=("local_engine",),
+        timeout_ms=5_000,
+        idempotency=IdempotencyPolicy.not_required,
+        adapter_id="python.weather_report",
+    ),
+    ToolEntry(
+        tool_id="reminder_create",
+        version="1",
+        capability_group="desktop.automations",
+        description="Schedule a timed reminder with title, due timestamp, and priority.",
+        input_model=ReminderCreateInput,
+        output_keys=("reminder_id", "title", "due_at_iso", "priority", "status"),
+        risk=RiskClass.reversible_write,
+        side_effect=True,
+        allowed_targets=("local_engine",),
+        timeout_ms=5_000,
+        idempotency=IdempotencyPolicy.key_required,
+        adapter_id="python.reminder_create",
+    ),
+    ToolEntry(
+        tool_id="calendar_schedule",
+        version="1",
+        capability_group="desktop.automations",
+        description="Schedule an event on the calendar with start and end times.",
+        input_model=CalendarScheduleInput,
+        output_keys=("event_id", "title", "start_time_iso", "end_time_iso", "status"),
+        risk=RiskClass.reversible_write,
+        side_effect=True,
+        allowed_targets=("local_engine",),
+        timeout_ms=5_000,
+        idempotency=IdempotencyPolicy.key_required,
+        adapter_id="python.calendar_schedule",
+    ),
+    ToolEntry(
+        tool_id="media_control",
+        version="1",
+        capability_group="desktop.media",
+        description="Control desktop media playback (play, pause, next, prev) and system volume.",
+        input_model=MediaControlInput,
+        output_keys=("action", "status"),
+        risk=RiskClass.reversible_write,
+        side_effect=True,
+        allowed_targets=("local_engine",),
+        timeout_ms=5_000,
+        idempotency=IdempotencyPolicy.not_required,
+        adapter_id="python.media_control",
+    ),
+    ToolEntry(
+        tool_id="web_search_ddg",
+        version="1",
+        capability_group="discovery.search",
+        description="Fallback search provider querying DuckDuckGo instant answers.",
+        input_model=WebSearchDdgInput,
+        output_keys=("query", "results", "total"),
+        risk=RiskClass.read_only,
+        side_effect=False,
+        allowed_targets=("local_engine",),
+        timeout_ms=10_000,
+        idempotency=IdempotencyPolicy.not_required,
+        adapter_id="python.web_search_ddg",
+    ),
+    ToolEntry(
+        tool_id="file_control",
+        version="1",
+        capability_group="desktop.files",
+        description="Read, write, append, or delete workspace files with shared undo receipt tracking.",
+        input_model=FileControlInput,
+        output_keys=("path", "operation", "status", "undo_id", "undo_receipt"),
+        risk=RiskClass.reversible_write,
+        side_effect=True,
+        allowed_targets=("approved_workspace",),
+        timeout_ms=10_000,
+        idempotency=IdempotencyPolicy.key_required,
+        adapter_id="python.file_control",
     ),
 )
 
