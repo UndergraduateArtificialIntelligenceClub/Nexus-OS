@@ -34,7 +34,7 @@ describe('fixtureSource.open', () => {
     expect(img.kind).toBe('image')
     const vid = await fixtureSource.open('nexus://fixtures/all-hands.mp4')
     expect(vid.kind).toBe('video')
-    if (vid.kind === 'video') expect(vid.src).toBe('') // offline: no stream, poster stands in
+    if (vid.kind === 'video') expect(vid.src).toBe('/fixtures/test-pattern.mp4') // the bundled offline clip
   })
 
   it('answers unknown links with an honest stub page, not an error', async () => {

@@ -28,5 +28,20 @@ if (typeof window.IntersectionObserver === 'undefined') {
   } as unknown as typeof IntersectionObserver
 }
 
+// jsdom 25 has no PointerEvent, so fireEvent.pointer* would drop clientX, button
+// and pointerId. A MouseEvent with the pointer fields is enough for scrubbing tests.
+if (typeof window.PointerEvent === 'undefined') {
+  class PointerEventStub extends MouseEvent {
+    readonly pointerId: number
+    readonly pointerType: string
+    constructor(type: string, init: PointerEventInit = {}) {
+      super(type, init)
+      this.pointerId = init.pointerId ?? 0
+      this.pointerType = init.pointerType ?? 'mouse'
+    }
+  }
+  window.PointerEvent = PointerEventStub as unknown as typeof PointerEvent
+}
+
 // Vitest runs without globals, so Testing Library can't auto-register cleanup.
 afterEach(() => cleanup())

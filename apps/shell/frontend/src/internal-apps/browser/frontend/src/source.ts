@@ -21,7 +21,7 @@ const svg = (body: string, w: number, h: number) =>
 const POSTER = svg(
   '<rect width="100%" height="100%" fill="#181816"/><rect x="18" y="14" width="10" height="8" fill="#74b8ad"/>' +
     '<rect x="34" y="14" width="10" height="8" fill="#74b8ad"/><rect x="50" y="14" width="10" height="8" fill="#3a3935"/>' +
-    '<path d="M30 40 L46 30 L46 50 Z" fill="#74b8ad"/>',
+    '<path d="M38 30 L54 40 L38 50 Z" fill="#74b8ad"/>',
   96,
   64,
 )
@@ -56,7 +56,7 @@ const RESULTS: SearchPayload['results'] = [
   {
     title: 'All-hands recording, Nov 12',
     url: 'nexus://fixtures/all-hands.mp4',
-    snippet: 'Fixture video: the meeting where the browser widget was specced (poster only, offline).',
+    snippet: 'Fixture video: the meeting where the browser widget was specced (a 5s test pattern, offline).',
     source: 'fixtures',
   },
 ]
@@ -108,7 +108,7 @@ export const fixtureSource: BrowserSource = {
       return { kind: 'image', src: CHART, alt: 'Fixture chart: desk usage by app', source: 'fixtures' }
     }
     if (url.endsWith('.mp4')) {
-      return { kind: 'video', src: '', poster: POSTER, source: 'fixtures' }
+      return { kind: 'video', src: '/fixtures/test-pattern.mp4', poster: POSTER, source: 'fixtures' }
     }
     // Unknown link: an honest stub page, the way a 404 is honest.
     const blocks: ArticleBlock[] = [

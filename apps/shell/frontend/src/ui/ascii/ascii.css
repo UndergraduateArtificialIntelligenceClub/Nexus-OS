@@ -116,6 +116,36 @@
   color: var(--ink);
 }
 
+/* The meter, adjustable. Ink bar on a muted bracket like every meter; the accent
+   only appears as the focus ring (the One Accent Rule). */
+.nx-aslider {
+  display: inline-block;
+  border-radius: var(--radius-key);
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: background-color var(--dur) var(--ease);
+}
+
+.nx-aslider .nx-ameter {
+  display: block;
+}
+
+.nx-aslider:hover:not([aria-disabled]) {
+  background: var(--bg);
+}
+
+.nx-aslider:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.nx-aslider[aria-disabled] {
+  cursor: default;
+  opacity: 0.35;
+}
+
 .nx-face {
   margin: 0;
   font: 600 var(--fs-face)/var(--lh-face) var(--mono);

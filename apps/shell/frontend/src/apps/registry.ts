@@ -12,6 +12,8 @@ import { SettingsApp } from '@/internal-apps/settings/frontend/src/App'
 import { SystemMonitorApp } from '@/internal-apps/system-monitor/frontend/src/App'
 import { TerminalApp } from '@/internal-apps/terminal/frontend/src/App'
 import { TimerApp } from '@/internal-apps/timer/frontend/src/App'
+import { ReaderApp } from '@/internal-apps/reader/frontend/src/App'
+import { VideoApp } from '@/internal-apps/video/frontend/src/App'
 import { WmApp } from '@/internal-apps/wm/frontend/src/App'
 import { SIZE_ORDER, type Size } from '@/wm/layout'
 import type { AppDef } from './types'
@@ -106,6 +108,28 @@ export const APPS = {
     fullscreen: true,
     phase: 'mvp',
     component: BrowserApp,
+  },
+  video: {
+    label: 'video',
+    glyph: '(>)',
+    sizes: ['1x1', '2x1', '2x2', '4x2'],
+    defaultSize: '2x2',
+    // Not "watch": that's the clock's.
+    aliases: ['video', 'player', 'movie', 'clip'],
+    fullscreen: true,
+    phase: 'mvp',
+    component: VideoApp,
+  },
+  reader: {
+    label: 'reader',
+    glyph: '[r]',
+    sizes: ['1x2', '2x2', '4x2'],
+    defaultSize: '2x2',
+    // Not bare "read": it would catch "read my notes".
+    aliases: ['reader', 'article', 'reading'],
+    fullscreen: true,
+    phase: 'mvp',
+    component: ReaderApp,
   },
   wm: {
     label: 'windows',

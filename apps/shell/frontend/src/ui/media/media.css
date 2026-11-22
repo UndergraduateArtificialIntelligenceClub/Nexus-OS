@@ -114,3 +114,223 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* --- ArticleReader ---
+   Reading type: Bubble scale (13/1.55) in a widget, Text scale (14/1.65) once the
+   box is wide enough to read like a page. One ~65ch measure, centred. The scroller
+   is the containing block so block offsets are measured from it (scroll memory). */
+
+.nx-article {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  container-type: inline-size;
+  color: var(--ink);
+  border-radius: var(--radius-key);
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+.nx-article:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* One measure for every block: ~65 characters of body text. In rem, not ch, so
+   the mono header and the sans body share the same edges. */
+.nx-article > * {
+  max-width: 36rem;
+  margin-inline: auto;
+}
+
+/* Children set only block margins, so the measure stays centred. */
+
+.nx-article-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-xs);
+  padding-bottom: var(--s-sm);
+}
+
+.nx-article-title {
+  margin: 0;
+  font: 600 15px/1.3 var(--sans);
+  letter-spacing: -0.005em;
+  text-wrap: balance;
+}
+
+.nx-article-h {
+  margin-block: var(--s-md) var(--s-xs);
+  font: 600 var(--fs-bubble)/1.35 var(--sans);
+  text-wrap: balance;
+}
+
+/* The smallest heading reads as a label, not a smaller title. */
+.nx-article-h3 {
+  font: var(--fs-label)/1.4 var(--mono);
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.nx-article-p,
+.nx-article-ul {
+  margin-block: 0 var(--s-sm);
+  font: 400 var(--fs-bubble)/1.55 var(--sans);
+  text-wrap: pretty;
+}
+
+.nx-article-ul {
+  padding-left: 1.25em;
+}
+
+.nx-article-ul li + li {
+  margin-top: 2px;
+}
+
+.nx-article-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-xs) var(--s-md);
+  margin-block: var(--s-sm) 0;
+  padding: var(--s-sm) 0 var(--s-xs);
+  border-top: 1px solid var(--line);
+}
+
+.nx-article-empty {
+  padding: var(--s-lg) 0;
+}
+
+@container (min-width: 480px) {
+  .nx-article-title {
+    font-size: 20px;
+  }
+
+  .nx-article-h {
+    font-size: var(--fs-body);
+    margin-top: var(--s-lg);
+  }
+
+  .nx-article-h3 {
+    font-size: var(--fs-label);
+  }
+
+  .nx-article-p,
+  .nx-article-ul {
+    font-size: var(--fs-body);
+    line-height: 1.65;
+    margin-bottom: var(--s-md);
+  }
+}
+
+/* --- VideoPlayer ---
+   The picture letterboxes in the media box; controls are mono chips, the ASCII
+   meter for seek and volume, and a tabular timecode (ink now, pencil total).
+   min: play + time under the picture (1x1). bar: controls beside the picture,
+   one per row (2x1). full: every control under the picture. */
+
+.nx-video {
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-sm);
+}
+
+.nx-video-surface {
+  flex: 1;
+  height: auto;
+  min-width: 0;
+}
+
+.nx-video-el {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  cursor: pointer;
+}
+
+.nx-video-controls {
+  flex: none;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-xs);
+}
+
+.nx-video-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-sm);
+  min-width: 0;
+}
+
+.nx-video-btn {
+  min-height: 26px;
+  min-width: 30px;
+  padding: 2px 6px;
+  font-size: var(--fs-mono);
+  letter-spacing: -0.04em;
+  flex: none;
+}
+
+.nx-video-seek {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.nx-video-time {
+  flex: none;
+  margin-left: auto;
+  font: var(--fs-label)/1 var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.nx-video-dur {
+  color: var(--muted);
+}
+
+.nx-video-sound {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-xs);
+  flex: none;
+}
+
+/* Attribution yields width before the controls do. */
+.nx-video-source {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: auto;
+}
+
+.nx-video[data-density='bar'] {
+  flex-direction: row;
+  gap: var(--s-md);
+}
+
+.nx-video[data-density='bar'] .nx-video-surface {
+  flex: 1 1 50%;
+}
+
+.nx-video[data-density='bar'] .nx-video-controls {
+  flex: 1 1 50%;
+  justify-content: center;
+}
+
+.nx-video[data-density='bar'] .nx-video-seek {
+  flex: none;
+  width: 100%;
+}
+
+.nx-video[data-density='min'] {
+  gap: var(--s-xs);
+}

@@ -1,0 +1,9 @@
+/* Reader widget: the article scrolls inside the frame; type is @/ui's. */
+
+.w-reader {
+  height: 100%;
+}
+
+.w-reader-empty {
+  height: 100%;
+}

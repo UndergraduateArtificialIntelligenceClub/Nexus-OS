@@ -12,14 +12,16 @@
 >
 > Still open (in dependency order): wire `engineClient` into `Desktop` per doc 07
 > behind `NEXUS_ENGINE_URL` (the Phase-2 wiring half of D-10); rebuild Spotlight fully
-> on the primitives with zero visual change; `VideoPlayer` / `ArticleReader` /
-> `SearchResults` info widgets once the engine emits typed payloads; the Assistant
-> app template.
+> on the primitives with zero visual change; the `SearchResults` info widget once
+> the engine emits typed payloads (WS-3); the Assistant app template.
 >
 > Since landed: `SettingsTemplate` (+ `SettingsSection` / `SettingsRow`) with the
 > settings widget ported onto it; the `--nexus-*` token aliases are retired (the
 > clock now reads `--ink` / `--accent` / `--surface`); the system monitor no longer
-> shows invented readings.
+> shows invented readings. `VideoPlayer` and `ArticleReader` (#26) with the `video`
+> and `reader` widgets built on them, fed by the media inbox
+> (`src/apps/mediaInbox.ts`: the browser's "open as widget" now, the engine's widget
+> payloads later through the same `showInWidget`); the P2 Slider as `AsciiSlider`.
 >
 > Original scope note: a reusable component/token/motion foundation for every future
 > app, widget, overlay and system surface in the shell. It does **not** touch the
@@ -266,7 +268,7 @@ internal app built with the templates and registered in `apps/registry.ts`.
 | `IconButton` | new (P1) | Glyph-only chip |
 | `TextInput`, `Textarea`, `SearchField` | new (P0) — extract from Spotlight field | Borderless Inter input after a teal `>` mark; SearchField = input + glyph + kbd hint |
 | `Checkbox`, `Radio`, `Switch` | new (P1) | Character-marked state (`[x]`, `[ ]`, `>` selector) — chars before color |
-| `Slider` | new (P2) | Only when a real use appears (volume, thresholds) |
+| `Slider` | **landed** as `AsciiSlider` (#26) | `role="slider"` over `AsciiMeter`: arrows/page/Home/End, pointer drag. First uses: video seek and volume |
 | `Select` / `Popover` | new (P1) — extract from AnchorPicker | Solid-card popover, grow-from-origin, Esc/focus-return, typeahead |
 | `Tooltip` | new (P2) | Delayed hint |
 | `Badge` / `Tag` | new (P1) | Label chip variants |
@@ -343,8 +345,8 @@ identically.
 | Component | Status | Purpose |
 |---|---|---|
 | `MediaSurface` | new (P1) | Places any media into a fixed grid cell: `fit: 'cover' \| 'contain'`, letterbox on `--surface` with the dot texture, caption slot, SourceBadge slot, fullscreen hook |
-| `VideoPlayer` | new (P2) | HTML5 `<video>` inside the WebView2 shell with ASCII controls: play/pause glyph, AsciiMeter scrubber, mono timecode; no autoplay, poster frame, volume via the P2 Slider |
-| `ArticleReader` | new (P2) | Readable typographic view of `fetch_article` output (headings / paragraphs / lists) in the Text/Bubble scale, evidence-ref markers (C9), fullscreen-native |
+| `VideoPlayer` | **landed** (#26) | HTML5 `<video>` inside the WebView2 shell with ASCII controls: play/pause glyph, AsciiMeter scrubber, mono timecode; no autoplay, poster frame, volume via the P2 Slider. Densities `min` (1x1) / `bar` (2x1) / `full`; Space/K, ←/→, ↑/↓, M; sleeps via `useMediaLifecycle` |
+| `ArticleReader` | **landed** (#26) | Readable typographic view of `fetch_article` output (headings / paragraphs / lists) in the Text/Bubble scale, evidence-ref markers (C9), fullscreen-native. Keeps the same block at the top through resize, fullscreen and the dock (`layoutKey`) |
 | `SearchResults` | new (P2) | Ranked result rows (glyph + title + source meta) from `search_web`; opens ArticleReader in fullscreen |
 | `SourceBadge` | new (P1) | Attribution/citation chip: domain or evidence ref, mono Label |
 | `MediaStates` | new (P1) | Loading (mono skeleton + AsciiSpinner), error (`x` + retry chip), empty — every media surface uses these |
@@ -595,6 +597,7 @@ apps/shell/frontend/src/ui/
 │   ├── AsciiFrame.tsx          # (exists)
 │   ├── AsciiSpinner.tsx        # (exists)
 │   ├── AsciiMeter.tsx          # new
+│   ├── AsciiSlider.tsx         # the P2 Slider: role=slider over AsciiMeter (#26)
 │   ├── Glyph.tsx + glyphs.ts   # the icon system
 │   ├── AsciiFace.tsx           # extracted from shell/avatar/frames.ts + AvatarArt
 │   └── ascii.css
