@@ -78,6 +78,7 @@ Derived from the original MVP plan ownership, extended for the new modules:
 ## 3. Milestone 1 — MVP gaps (issues #24–#41)
 
 Goal: close every incomplete checkpoint from the original MVP plan before starting M2.
+Detailed integration roadmap & audit: [Milestone 1 Integration Plan](milestone-1-integration-plan.md).
 
 ### Web search
 
