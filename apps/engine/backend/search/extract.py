@@ -10,8 +10,12 @@ import sys
 from datetime import datetime
 from urllib.parse import urlsplit
 
-from lxml import html
-from trafilatura import bare_extraction
+try:
+    from lxml import html
+    from trafilatura import bare_extraction
+except ImportError:
+    html = None
+    bare_extraction = None
 
 from search.errors import RetrievalError
 from search.http import DownloadedPage
