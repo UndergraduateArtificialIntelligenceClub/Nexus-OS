@@ -31,6 +31,7 @@ repo's existing scheme.
 | `feat:gestures`       | Gestures       | Hand tracking, gesture classifier, gesture-to-action mapping                                                           |
 | `feat:vision`         | Vision         | Screen understanding, vision-guided actions, camera vision apps                                                        |
 | `feat:agents-manager` | Agents Manager | Agent identity contract, duty roster, roster verbs, duties, permissions                                                |
+| `feat:memory`         | Memory         | Canonical scoped store, retrieval, Memory Liaison subagent, Memory widget, identity/profile                            |
 | `feat:search`         | Web Search     | Search providers, headless browser, search UI (pre-existing label)                                                     |
 | `feat:integration`         | Integration     | intigrate everything                                                     |
 
@@ -70,7 +71,8 @@ Derived from the original MVP plan ownership, extended for the new modules:
 | `feat:automations`    | jiawen, raghav , Avneet (for extra feature intigration)           |
 | `feat:gestures`       | (assign in meeting — works closely with vision)                 |
 | `feat:vision`         | (assign in meeting — works closely with automations + gestures) |
-| `feat:agents-manager` | cohen , (one more person needed )                                |
+| `feat:agents-manager` | cohen , (one more person needed )                                |
+| `feat:memory`         | (assign in meeting — works with AI-Core and agents-manager)      |
 | `feat:integration`    | Ragahv (and who ever gets free)                                                                   |
 
 ---
@@ -130,7 +132,7 @@ Detailed integration roadmap & audit: [Milestone 1 Integration Plan](milestone-1
 
 ---
 
-## 4. Milestone 2 — Integration, Gestures, Vision, Agents Manager (issues #42–#64)
+## 4. Milestone 2 — Integration, Gestures, Vision, Agents Manager (issues #42–#64, #93–#101)
 
 ### Integration
 
@@ -185,6 +187,29 @@ Detailed integration roadmap & audit: [Milestone 1 Integration Plan](milestone-1
 | ----------------------------------------------------------------------------------- | ------------------------------------------------------------ | --- | ------ |
 | [#46](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/issues/46) | Voice ergonomics: push-to-talk, echo guard, device selection | p2  | ⬜     |
 
+### Memory (M2)
+
+Goal: a canonical, scoped, auditable memory store; intent-aware retrieval; a Memory Liaison subagent
+that owns the main-agent ↔ memory link; and a Memory widget so users can browse, review, and control
+memory. Trust split: the Manager commits, the Liaison proposes, the user controls.
+
+| #                                                                                   | Issue                                                                                                  | Pri | Status |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | --- | ------ |
+| [#93](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/issues/93) | Memory store foundation: canonical scope, audit, FTS5 projection                                       | p0  | ⬜     |
+| [#94](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/issues/94) | Intent-aware retrieval and MemoryContext assembly                                                      | p0  | ⬜     |
+| [#95](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/issues/95) | Memory Liaison subagent and main-agent link                                                            | p0  | ⬜     |
+| [#96](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/issues/96) | Memory read API and events                                                                             | p0  | ⬜     |
+| [#97](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/issues/97) | Memory widget: browse, search, health                                                                  | p0  | ⬜     |
+| [#98](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/issues/98) | Memory write lifecycle and mutation API                                                                | p1  | ⬜     |
+| [#99](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/issues/99) | Memory widget controls: review, edit, forget, identity                                                 | p1  | ⬜     |
+| [#100](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/issues/100)| Session memory, identity profile, instruction files                                                    | p1  | ⬜     |
+| [#101](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/issues/101)| Advanced memory: semantic file RAG + consolidation duties                                              | p2  | ⬜     |
+
+Design docs: `docs/memory/README.md`, `docs/memory/plan.md`, `docs/memory/contracts.md`, `docs/memory/ui.md`.
+Issue [#79](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/issues/79) is rescoped to
+the M3 advanced remainder (graph/entity memory, semantic file RAG retention, privacy hardening) once
+#93–#100 close.
+
 ---
 
 ## 5. Milestone 3 — Android, Apps, Integration (issues #65–#82)
@@ -217,7 +242,13 @@ Detailed integration roadmap & audit: [Milestone 1 Integration Plan](milestone-1
 | ----------------------------------------------------------------------------------- | ------------------------------------- | --- | ------ |
 | [#78](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/issues/78) | Unified undo + confirmation layers    | p1  | ⬜     |
 | [#79](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/issues/79) | Memory and identity layer             | p1  | ⬜     |
+
 | [#80](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/issues/80) | Learned rules -> policy feedback loop | p2  | ⬜     |
+
+**#79 rescoped:** M2 now covers the memory foundation, retrieval, Liaison link, widget, write
+lifecycle, identity/session memory, and advanced RAG via #93–#101. #79 keeps the M3 advanced
+remainder: graph/entity memory, temporal multi-hop retrieval, graph-based identity enrichment,
+and privacy hardening across every projection.
 | [#81](https://github.com/UndergraduateArtificialIntelligenceClub/Nexus-OS/issues/81) | Updater and packaging pipeline        | p2  | ⬜     |
 
 ### Spikes & sign-off
@@ -265,6 +296,7 @@ Detailed integration roadmap & audit: [Milestone 1 Integration Plan](milestone-1
 | Gestures                  | —                     | #47, #48, #49, #50      | —                           |
 | Vision                    | —                     | #51, #52, #53           | —                           |
 | Agents manager            | #27 (optional preview) | #54, #55, #56, #57, #58 | #59, #60, #61                |
+| Memory                    | —                     | #93, #94, #95, #96, #97 | #98, #99, #100, #101         |
 | Android ecosystem         | —                     | —                      | #65, #66, #67, #68, #69, #70 |
 
 ### Critical path (demo blockers, in order)
@@ -273,6 +305,7 @@ Detailed integration roadmap & audit: [Milestone 1 Integration Plan](milestone-1
 M1: #34 (voice decision) → #41 (engine wiring) → #29 (search tools) → #42 (widget producers)
     → #25/#26 (widgets) → #35 → #37 (voice loop) → #32 (layout sign-off)
 M2: #54 → #55 → #56/#57/#58 (roster)     #47 → #48 → #49 (gestures) — independent track
+      #93 → #94 → #95 → #96 → #97 (memory) — independent track
 M3: #65 → #66 → #67 → #68 (Android)      #82 (sign-off) last
 ```
 

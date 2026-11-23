@@ -27,6 +27,7 @@
 | Desktop Agent | Agent subgraph | Desktop/system discovery and action proposals |
 | Discovery Agent | Agent subgraph | Research, evidence, source comparison |
 | Knowledge Agent | Agent subgraph | Retrieval, consolidation, memory proposals |
+| Memory Liaison | Memory subagent (Proposed) | Manages the main-agent ↔ memory link: scoped context and C8 proposals only; no direct DB writes |
 | Task Worker | Worker graph | Scope enforcement, proposal-to-receipt lifecycle |
 | Deterministic recipe | Code path | Known bounded operation with no open-ended planning |
 | Tool | Registered Python engine operation | One typed capability with schema/policy metadata |
