@@ -31,6 +31,17 @@
   text-align: right;
 }
 
+/* --- Offline banner --- */
+
+.w-agents-banner {
+  margin: 0;
+  padding: var(--s-xs) var(--s-sm);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-row);
+  color: var(--ink);
+  font: var(--fs-micro) var(--mono);
+}
+
 /* --- Split layout --- */
 
 .w-agents-body {
@@ -65,7 +76,7 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
   grid-template-areas:
     'status label time'
-    'activity activity id';
+    'activity activity role';
   align-items: baseline;
   gap: 2px var(--s-sm);
   padding: var(--s-xs) var(--s-sm);
@@ -97,16 +108,26 @@
 }
 
 /* Teal is the agent at work; waiting is a decision, also teal. Errors stay ink. */
-.w-agents-row[data-status='acting'] .w-agents-state,
-.w-agents-row[data-status='thinking'] .w-agents-state,
-.w-agents-row[data-status='speaking'] .w-agents-state,
-.w-agents-row[data-status='listening'] .w-agents-state,
+.w-agents-row[data-status='running'] .w-agents-state,
 .w-agents-row[data-status='waiting'] .w-agents-state {
   color: var(--accent);
 }
 
 .w-agents-row[data-status='error'] .w-agents-state {
   color: var(--ink);
+}
+
+/* Task agents sit under their run's supervisor. */
+.w-agents-row[data-kind='task'] {
+  padding-left: var(--s-lg);
+}
+
+/* Offline: the rows are the last thing the engine said, not current state. */
+.w-agents[data-connection='offline'] .w-agents-state,
+.w-agents[data-connection='offline'] .w-agents-label,
+.w-agents[data-connection='offline'] .w-agents-detail-label,
+.w-agents[data-connection='offline'] .w-agents-detail-activity {
+  color: var(--muted);
 }
 
 .w-agents-label {
@@ -137,8 +158,13 @@
   font: var(--fs-mono) var(--mono);
 }
 
-.w-agents-id {
-  grid-area: id;
+/* No role cell (supervisors): the activity takes the whole line. */
+.w-agents-activity:last-child {
+  grid-column: 1 / -1;
+}
+
+.w-agents-role {
+  grid-area: role;
   max-width: 16ch;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -199,6 +225,25 @@
 
 .w-agents-detail-tasks .nx-timeline {
   margin-top: var(--s-xs);
+}
+
+.w-agents-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px var(--s-sm);
+  font: var(--fs-micro) var(--mono);
+}
+
+.w-agents-facts dt {
+  color: var(--muted);
+}
+
+.w-agents-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
 }
 
 .w-agents-note {

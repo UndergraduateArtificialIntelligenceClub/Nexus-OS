@@ -35,6 +35,9 @@ export interface EngineClientOptions {
   /** Apply a ui.command; the client sends the ui.command.ack from the result. */
   onUiCommand?: (command: UiCommandEvent['data']) => UiCommandResult | Promise<UiCommandResult>
   onConnectionChange?: (connected: boolean) => void
+  /** Listen only: send nothing on the socket (no ui.command.ack, no wm.state).
+   *  For extra sockets such as the agents roster; the shell's own client answers commands. */
+  observeOnly?: boolean
   /** For tests. */
   WebSocketImpl?: typeof WebSocket
   fetchImpl?: typeof fetch
@@ -63,7 +66,7 @@ export function createEngineClient(options: EngineClientOptions = {}) {
   let lastWmState: WmState | null = null
 
   const send = (type: string, data: unknown, runId: string | null = null) => {
-    if (socket?.readyState !== WS.OPEN) return false
+    if (options.observeOnly || socket?.readyState !== WS.OPEN) return false
     const message: WsEnvelope<string, unknown> = { type, session_id: sessionId, run_id: runId, ts: new Date().toISOString(), data }
     socket.send(JSON.stringify(message))
     return true

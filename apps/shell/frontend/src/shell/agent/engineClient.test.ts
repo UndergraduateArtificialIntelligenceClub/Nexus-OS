@@ -81,6 +81,16 @@ describe('engineClient', () => {
     expect(socket.sent[0].data).toMatchObject({ command_id: 'cmd_2', ok: false })
   })
 
+  it('sends nothing when observe-only, so a second socket never answers ui.command', async () => {
+    const onEvent = vi.fn()
+    const { client, socket } = setup({ observeOnly: true, onEvent })
+    socket.receive({ type: 'ui.command', session_id: SESSION, run_id: 'r1', ts: 'now', data: { command_id: 'cmd_3', action: 'open_app', app_id: null, data: {} } })
+    expect(client.pushWmState({ apps: [], focused_app_id: null })).toBe(false)
+    await Promise.resolve()
+    expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'ui.command' }))
+    expect(socket.sent).toEqual([])
+  })
+
   it('surfaces REST errors with the shared error shape', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ error: { code: 'CONFLICT', message: 'nope', details: {} } }), { status: 409 }))
     const { client } = setup({ fetchImpl })

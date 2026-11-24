@@ -1,7 +1,9 @@
 # Agents Manager — Level 0 Plan
 
 Status: **Level 0 preview implemented** in
-`apps/shell/frontend/src/internal-apps/agents-manager/`.
+`apps/shell/frontend/src/internal-apps/agents-manager/`. **Superseded by Level 1**
+(#55): the data contract, sources and event mapping below (§4–§6) are replaced
+by the engine's agent identity contract, see [`roster-widget.md`](./roster-widget.md).
 
 Companion to [`concepts.md`](./concepts.md), which keeps the original duty-roster
 ideas and the open questions for the Agent team.
@@ -215,7 +217,7 @@ Empty roster: `EmptyState` with "no agents on the roster".
 | Level | Issue | Scope |
 | --- | --- | --- |
 | 0 | #27 | Read-only fixture roster; live reducer seam. **This change.** |
-| 1 | #54, #55 | Engine agent identity contract + live roster rows. |
+| 1 | #54, #55 | Engine agent identity contract + live roster rows. **Done** — [`roster-widget.md`](./roster-widget.md). |
 | 1 | #56 | Orb dressing from the roster aggregate (working / error). |
 | 2 | #57 | Pause / resume / cancel / retry, only when the engine can perform them. |
 | 2 | #58 | Waiting agents route into `InterruptPanel`. |

@@ -1,272 +1,269 @@
-// The roster seam. A source is either the bundled fixture (what the widget shows
-// until the engine event bus lands) or a live store fed by the engine's
-// ServerEvent union. The widget never invents agents: the wire contract has no
-// per-agent identity yet (#54), so live events update the one UI agent.
+// The roster seam. A source is either the bundled fixture (tests and offline
+// development) or the live engine roster: `GET /api/v1/agents` to catch up,
+// then `agent.updated` events (docs/agents-manager/agent-identity.md). Rows are
+// exactly what the engine last reported - the widget never invents an agent,
+// a status, or activity, and when the engine is unreachable the rows freeze.
 
-import { WORKING, type TimelineTask } from '@/ui'
-import type { AgentStateName, ServerEvent, TaskStatus } from '@/types/agentEvents'
+import { createEngineClient } from '@/shell/agent/engineClient'
+import { engineSessionId } from '@/shell/agent/engineSession'
+import type { AgentIdentity, AgentStatus, ServerEvent } from '@/types/agentEvents'
 
 export type RosterKind = 'fixture' | 'live'
 
+/**
+ * - `fixture`: bundled data, never live.
+ * - `connecting`: the first sync with the engine is pending.
+ * - `live`: synced; events keep the rows current.
+ * - `offline`: the connection dropped or the sync failed. Rows are frozen at
+ *   `frozenAt` until the next successful sync.
+ */
+export type RosterConnection = 'fixture' | 'connecting' | 'live' | 'offline'
+
+/** One engine agent as the widget renders it (an `AgentIdentity` with parsed times). */
 export interface AgentRow {
   id: string
+  /** supervisor | discovery | knowledge | desktop | recipe */
+  role: string
   label: string
-  status: AgentStateName
-  /** One honest line: what it is doing, waiting on, or why it failed. */
+  status: AgentStatus
+  /** When the current status began (epoch ms). */
+  since: number
+  runId: string
+  /** What it is doing now, or how it ended. */
   activity: string
-  /** When the current status began; null for idle or scheduled work. */
-  since: number | null
-  tasks: TimelineTask[]
+  updatedAt: number
+}
+
+export interface RosterSnapshot {
+  rows: readonly AgentRow[]
+  connection: RosterConnection
+  /** When the roster stopped being live; elapsed times stop here. */
+  frozenAt: number | null
 }
 
 export interface RosterSource {
   readonly kind: RosterKind
-  rows(): readonly AgentRow[]
+  snapshot(): RosterSnapshot
   subscribe(listener: () => void): () => void
-  /** Live sources apply engine events; fixture sources ignore them. */
-  apply(event: ServerEvent): void
+  /** Open the feed while a widget shows the roster. Returns the stop function. */
+  start(): () => void
 }
 
-/** The one agent the current wire contract can identify. */
-export const UI_AGENT_ID = 'agent.nexus'
-
-const LIVE_ACTIVITY: Record<AgentStateName, string> = {
-  idle: 'waiting for a request',
-  listening: 'listening for a request',
-  thinking: 'thinking it through',
-  acting: 'running a task',
-  waiting: 'needs a decision',
-  speaking: 'replying',
-  error: 'the last run failed',
+export interface FeedHandlers {
+  onEvent(event: ServerEvent): void
+  onConnectionChange(connected: boolean): void
 }
 
-const TASK_WORD: Record<TaskStatus, string> = {
-  queued: 'queued',
-  running: 'running',
-  done: 'done',
-  failed: 'failed',
-  skipped: 'skipped',
+/** What the live roster needs from the engine. */
+export interface RosterFeed {
+  listAgents(): Promise<AgentIdentity[]>
+  /** Open the event stream; returns close. */
+  open(handlers: FeedHandlers): () => void
 }
 
-/** The four duties from concepts.md §2, anchored to the clock the widget mounts. */
-export function fixtureRoster(now = Date.now()): AgentRow[] {
-  return [
-    {
-      id: 'agent.research',
-      label: 'research-web',
-      status: 'acting',
-      activity: 'drafting the summary',
-      since: now - 134_000,
-      tasks: [
-        { id: 'search', label: 'search the web', status: 'done' },
-        { id: 'read', label: 'read three sources', status: 'done' },
-        { id: 'write', label: 'draft the summary', status: 'running' },
-      ],
-    },
-    {
-      id: 'agent.index',
-      label: 'file-indexer',
-      status: 'waiting',
-      activity: 'needs a decision on 12 new files',
-      since: now - 40_000,
-      tasks: [
-        { id: 'scan', label: 'scan the documents folder', status: 'done' },
-        { id: 'confirm', label: 'confirm 12 files', status: 'running' },
-      ],
-    },
-    {
-      id: 'agent.sync',
-      label: 'nightly-sync',
-      status: 'error',
-      activity: 'source unreachable',
-      since: now - 62_000,
-      tasks: [{ id: 'fetch', label: 'fetch the source', status: 'failed' }],
-    },
-    {
-      id: 'agent.brief',
-      label: 'morning-brief',
-      status: 'idle',
-      activity: 'scheduled for 07:00',
-      since: null,
-      tasks: [],
-    },
-  ]
-}
-
-/** The live store starts with the one agent the wire contract can identify. */
-export function liveRoster(_now = Date.now()): AgentRow[] {
-  return [
-    {
-      id: UI_AGENT_ID,
-      label: 'nexus',
-      status: 'idle',
-      activity: LIVE_ACTIVITY.idle,
-      since: null,
-      tasks: [],
-    },
-  ]
-}
-
-export function createRosterSource(
-  kind: RosterKind,
-  initial: readonly AgentRow[],
-): RosterSource {
-  let rows = initial
-  const listeners = new Set<() => void>()
-
+export function toRow(agent: AgentIdentity): AgentRow {
   return {
-    kind,
-    rows: () => rows,
-    subscribe(listener) {
+    id: agent.agent_id,
+    role: agent.role,
+    label: agent.label,
+    status: agent.status,
+    since: Date.parse(agent.since),
+    runId: agent.owner_run_id,
+    activity: agent.last_activity,
+    updatedAt: Date.parse(agent.updated_at),
+  }
+}
+
+const sameRow = (a: AgentRow, b: AgentRow) =>
+  a.status === b.status &&
+  a.activity === b.activity &&
+  a.since === b.since &&
+  a.updatedAt === b.updatedAt &&
+  a.label === b.label
+
+/**
+ * Upsert by agent id. Returns the same array when nothing changed, and keeps
+ * every other row object, so only the changed row re-renders. An event older
+ * than the row (it was in flight while a newer snapshot arrived) is ignored.
+ */
+export function upsertRow(rows: readonly AgentRow[], row: AgentRow): readonly AgentRow[] {
+  const index = rows.findIndex((current) => current.id === row.id)
+  if (index < 0) return [...rows, row]
+  const current = rows[index]
+  if (row.updatedAt < current.updatedAt || sameRow(current, row)) return rows
+  const copy = rows.slice()
+  copy[index] = row
+  return copy
+}
+
+/**
+ * The catch-up list replaces the roster: agents the engine no longer knows
+ * (e.g. after a restart) disappear. Events received since the socket opened
+ * win over an older snapshot entry. Unchanged rows keep their object.
+ */
+export function mergeSnapshot(
+  previous: readonly AgentRow[],
+  snapshot: readonly AgentRow[],
+  fresh: ReadonlyMap<string, AgentRow>,
+): AgentRow[] {
+  const before = new Map(previous.map((row) => [row.id, row]))
+  const keep = (row: AgentRow) => {
+    const old = before.get(row.id)
+    return old && sameRow(old, row) ? old : row
+  }
+  const listed = new Set(snapshot.map((row) => row.id))
+  const merged = snapshot.map((row) => {
+    const live = fresh.get(row.id)
+    return keep(live && live.updatedAt >= row.updatedAt ? live : row)
+  })
+  for (const row of fresh.values()) if (!listed.has(row.id)) merged.push(keep(row))
+  return merged
+}
+
+function createStore(initial: RosterSnapshot) {
+  let state = initial
+  const listeners = new Set<() => void>()
+  return {
+    get: () => state,
+    set(next: RosterSnapshot) {
+      state = next
+      for (const listener of [...listeners]) listener()
+    },
+    subscribe(listener: () => void) {
       listeners.add(listener)
       return () => {
         listeners.delete(listener)
       }
     },
-    apply(event) {
-      if (kind !== 'live') return
-      const next = applyServerEvent(rows, event)
-      if (next === rows) return
-      rows = next
-      for (const listener of [...listeners]) listener()
+  }
+}
+
+export function fixtureRosterSource(agents: readonly AgentIdentity[] = fixtureAgents()): RosterSource {
+  const snapshot: RosterSnapshot = { rows: agents.map(toRow), connection: 'fixture', frozenAt: null }
+  return {
+    kind: 'fixture',
+    snapshot: () => snapshot,
+    subscribe: () => () => {},
+    start: () => () => {},
+  }
+}
+
+export function liveRosterSource(feed: RosterFeed = engineRosterFeed(), now = Date.now): RosterSource {
+  const store = createStore({ rows: [], connection: 'connecting', frozenAt: null })
+
+  const freeze = () => {
+    const state = store.get()
+    store.set({ ...state, connection: 'offline', frozenAt: state.frozenAt ?? now() })
+  }
+
+  return {
+    kind: 'live',
+    snapshot: store.get,
+    subscribe: store.subscribe,
+    start() {
+      let active = true
+      let sync = 0
+      // Agents reported by events since the socket opened.
+      let fresh = new Map<string, AgentRow>()
+
+      const close = feed.open({
+        onEvent(event) {
+          if (!active || event.type !== 'agent.updated') return
+          const row = toRow(event.data)
+          fresh.set(row.id, row)
+          const state = store.get()
+          const rows = upsertRow(state.rows, row)
+          if (rows !== state.rows) store.set({ ...state, rows })
+        },
+        onConnectionChange(connected) {
+          if (!active) return
+          if (!connected) {
+            sync += 1 // a sync still in flight belongs to the dropped socket
+            freeze()
+            return
+          }
+          fresh = new Map()
+          const request = ++sync
+          feed.listAgents().then(
+            (agents) => {
+              if (!active || request !== sync) return
+              const rows = mergeSnapshot(store.get().rows, agents.map(toRow), fresh)
+              store.set({ rows, connection: 'live', frozenAt: null })
+            },
+            () => {
+              if (active && request === sync) freeze()
+            },
+          )
+        },
+      })
+
+      return () => {
+        active = false
+        close()
+      }
     },
   }
 }
 
-export function fixtureRosterSource(now = Date.now()): RosterSource {
-  return createRosterSource('fixture', fixtureRoster(now))
-}
-
-export function liveRosterSource(now = Date.now()): RosterSource {
-  return createRosterSource('live', liveRoster(now))
-}
-
-/** The widget's default until the shell has an engine event bus (#41 / #45). */
-export function defaultRosterSource(now = Date.now()): RosterSource {
-  return fixtureRosterSource(now)
+/** The engine feed: REST catch-up plus a listen-only socket in the shell's session. */
+export function engineRosterFeed(sessionId = engineSessionId()): RosterFeed {
+  const rest = createEngineClient({ sessionId, observeOnly: true })
+  return {
+    listAgents: rest.listAgents,
+    open(handlers) {
+      const client = createEngineClient({
+        sessionId,
+        observeOnly: true,
+        onEvent: handlers.onEvent,
+        onConnectionChange: handlers.onConnectionChange,
+      })
+      client.connect()
+      return client.close
+    },
+  }
 }
 
 /**
- * Folds a wire event into the UI agent's row. Pure: returns the same array when
- * nothing changed, so the external store does not notify on no-ops.
+ * Live everywhere except tests. `VITE_NEXUS_ROSTER=fixture` shows the bundled
+ * roster for offline development; it is never a fallback for a lost engine.
  */
-export function applyServerEvent(
-  rows: readonly AgentRow[],
-  event: ServerEvent,
-  now = Date.now(),
-): readonly AgentRow[] {
-  switch (event.type) {
-    case 'agent.state':
-      return updateUiAgent(rows, (row) => ({
-        ...row,
-        status: event.data.state,
-        activity: LIVE_ACTIVITY[event.data.state],
-        since:
-          event.data.state === 'idle'
-            ? null
-            : row.status === event.data.state
-              ? row.since
-              : now,
-      }))
-
-    case 'task.progress': {
-      const { task_id, tool_id, status } = event.data
-      const label = tool_id ?? task_id
-      return updateUiAgent(rows, (row) => {
-        const known = row.tasks.some((task) => task.id === task_id)
-        const tasks = known
-          ? row.tasks.map((task) =>
-              task.id === task_id ? { ...task, label, status } : task,
-            )
-          : [...row.tasks, { id: task_id, label, status }]
-        return { ...row, activity: `${label} ${TASK_WORD[status]}`, tasks }
-      })
-    }
-
-    case 'run.interrupt':
-      return updateUiAgent(rows, (row) => ({
-        ...row,
-        status: 'waiting',
-        activity: event.data.message,
-        since: row.status === 'waiting' ? row.since : now,
-      }))
-
-    case 'run.completed':
-      return updateUiAgent(rows, (row) => ({
-        ...row,
-        status: event.data.status === 'ok' ? 'idle' : 'error',
-        activity:
-          event.data.status === 'ok'
-            ? 'finished the run'
-            : `run ${event.data.status}`,
-        since: event.data.status === 'ok' ? null : now,
-      }))
-
-    case 'run.error':
-      return updateUiAgent(rows, (row) => ({
-        ...row,
-        status: 'error',
-        activity: event.data.error.message,
-        since: now,
-      }))
-
-    default:
-      return rows
-  }
+export function defaultRosterSource(): RosterSource {
+  const fixture = import.meta.env.MODE === 'test' || import.meta.env.VITE_NEXUS_ROSTER === 'fixture'
+  return fixture ? fixtureRosterSource() : liveRosterSource()
 }
 
-function updateUiAgent(
-  rows: readonly AgentRow[],
-  update: (row: AgentRow) => AgentRow,
-): readonly AgentRow[] {
-  const index = rows.findIndex((row) => row.id === UI_AGENT_ID)
-  if (index < 0) return rows
-
-  const current = rows[index]
-  const next = update(current)
-  if (
-    next.status === current.status &&
-    next.activity === current.activity &&
-    next.since === current.since &&
-    next.tasks === current.tasks
-  ) {
-    return rows
-  }
-
-  const copy = rows.slice()
-  copy[index] = next
-  return copy
-}
-
-export interface RosterCounts {
-  working: number
-  waiting: number
-  error: number
-  idle: number
-}
-
-export function rosterCounts(rows: readonly AgentRow[]): RosterCounts {
-  const counts: RosterCounts = { working: 0, waiting: 0, error: 0, idle: 0 }
+/**
+ * Runs newest first; inside a run, the engine's creation order (the
+ * supervisor, then its task agents). Labels repeat across runs ("supervisor"),
+ * so the run grouping is what makes rows readable.
+ */
+export function orderRows(rows: readonly AgentRow[]): AgentRow[] {
+  const runs = new Map<string, AgentRow[]>()
   for (const row of rows) {
-    if (row.status === 'error') counts.error += 1
-    else if (row.status === 'waiting') counts.waiting += 1
-    else if (WORKING.includes(row.status)) counts.working += 1
-    else counts.idle += 1
+    const group = runs.get(row.runId)
+    if (group) group.push(row)
+    else runs.set(row.runId, [row])
   }
+  return [...runs.values()].reverse().flat()
+}
+
+export function rosterCounts(rows: readonly AgentRow[]): Record<AgentStatus, number> {
+  const counts: Record<AgentStatus, number> = { idle: 0, running: 0, waiting: 0, done: 0, error: 0 }
+  for (const row of rows) counts[row.status] += 1
   return counts
 }
 
-/** The header's aggregate line. Zero categories stay quiet. */
+/** The header's aggregate line: only what needs attention. Zero categories stay quiet. */
 export function rosterSummary(rows: readonly AgentRow[]): string {
   const counts = rosterCounts(rows)
   const parts: string[] = []
-  if (counts.working) parts.push(`${counts.working} working`)
+  if (counts.running) parts.push(`${counts.running} running`)
   if (counts.waiting) parts.push(`${counts.waiting} waiting`)
   if (counts.error) parts.push(`${counts.error} error`)
   return parts.length ? parts.join(' · ') : 'all quiet'
 }
 
-/** `2m14s`, `40s`, `1h02m`; an em dash when there is no active status. */
+/** `2m14s`, `40s`, `1h02m`; an em dash when there is nothing to time. */
 export function formatElapsed(since: number | null, now = Date.now()): string {
   if (since === null) return '—'
   const seconds = Math.max(0, Math.floor((now - since) / 1000))
@@ -275,4 +272,43 @@ export function formatElapsed(since: number | null, now = Date.now()): string {
   if (minutes < 60) return `${minutes}m${String(seconds % 60).padStart(2, '0')}s`
   const hours = Math.floor(minutes / 60)
   return `${hours}h${String(minutes % 60).padStart(2, '0')}m`
+}
+
+/** Three runs covering every status, in the contract's exact shape. */
+export function fixtureAgents(now = Date.now()): AgentIdentity[] {
+  const at = (secondsAgo: number) => new Date(now - secondsAgo * 1000).toISOString()
+  const agent = (
+    agent_id: string,
+    role: string,
+    label: string,
+    status: AgentStatus,
+    secondsAgo: number,
+    owner_run_id: string,
+    last_activity: string,
+  ): AgentIdentity => ({
+    agent_id,
+    role,
+    label,
+    status,
+    since: at(secondsAgo),
+    owner_run_id,
+    last_activity,
+    updated_at: at(secondsAgo),
+  })
+
+  return [
+    agent('supervisor:run-sync', 'supervisor', 'supervisor', 'error', 62, 'run-sync', 'source unreachable'),
+    agent('task:req-sync:fetch', 'discovery', 'fetch the sync source', 'error', 62, 'run-sync', 'source unreachable'),
+    agent('supervisor:run-open', 'supervisor', 'supervisor', 'waiting', 40, 'run-open',
+      'Allow open_application (reversible_write) targeting app:browser'),
+    agent('task:req-open:direct', 'recipe', 'Open application browser', 'waiting', 40, 'run-open',
+      'Allow open_application (reversible_write) targeting app:browser'),
+    agent('supervisor:run-research', 'supervisor', 'supervisor', 'running', 134, 'run-research',
+      'summarize the latest notes on vector search'),
+    agent('task:req-research:search', 'discovery', 'search the web for vector search notes', 'done', 95,
+      'run-research', 'found three sources'),
+    agent('task:req-research:read', 'knowledge', 'read and summarize three sources', 'running', 60,
+      'run-research', 'read and summarize three sources'),
+    agent('task:req-research:save', 'desktop', 'save the summary to notes', 'idle', 134, 'run-research', 'planned'),
+  ]
 }
