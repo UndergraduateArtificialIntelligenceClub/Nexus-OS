@@ -11,6 +11,7 @@ agent doing, for whom, since when?"*.
 - TypeScript mirror: `AgentIdentity`, `AgentStatus` and `AgentUpdatedEvent` in
   `apps/shell/frontend/src/types/agentEvents.ts`; `engineClient.listAgents()`.
 - Tests: `tests/systems/test_agents_api.py`.
+- Consumer: the roster widget, [roster-widget.md](roster-widget.md).
 
 ## Which agents exist
 
