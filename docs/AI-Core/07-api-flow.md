@@ -34,7 +34,8 @@ shell ══WS═══▶ ui.command.ack, wm.state
 | `POST` | `/api/v1/agent/runs/{run_id}/resume` | `{resume: "yes"\|"no"\|true\|false}` for confirm, `{resume: "<text>"}` for clarify | `202` run view, `409` if nothing is pending |
 | `POST` | `/api/v1/agent/runs/{run_id}/cancel` | – | Run view with `status: "cancelled"`; a pending approval is rejected |
 | `GET` | `/api/v1/agents?session_id={uuid}` | – | `{agents: [AgentIdentity]}` roster; `session_id` optional (all sessions when omitted), `400` if not a UUID. See [agent identity](../agents-manager/agent-identity.md) |
-| `GET` | `/api/v1/tools` | – | Registered tool contracts incl. `input_schema` (JSON Schema) |
+| `GET` | `/api/v1/tools` | – | `{tools: [...]}`: registered tool contracts incl. `input_schema` (JSON Schema), plus `scope` (`read`\|`mutate`\|`network`), `policy` (`auto_approve`\|`approval_required`\|`denied`, the static outcome with user overrides applied), `require_approval` (user override), `policy_locked` (approval already required without the override) and `last_used_at` (latest `tool_executions.started_at`, or `null`) |
+| `PATCH` | `/api/v1/tools/{tool_id}` | `{require_approval: bool}` | `{tool}` view as above. **Tighten-only:** `true` stores an override in `tool_policy_overrides` that the policy and the gateway's read-only bypass both honour; `false` clears it but never loosens a locked tool. Appends audit `tool_policy_changed`. 404 `TOOL_UNAVAILABLE`, 400 for other fields |
 | `GET` | `/api/v1/health` | – | `{status, service, api_version, model_provider}` |
 | `PUT` | `/api/v1/workspaces/{workspace_id}` | `{name?, layout}` | `persist_workspace`: upsert the shell's layout envelope `{version, savedAt, session}` into SQLite `workspaces.layout` → `{saved, workspace_id, saved_at}` (400 bad id/envelope, 413 over 256 KiB) |
 | `GET` | `/api/v1/workspaces/{workspace_id}` | – | Restore on launch: `{workspace_id, name, layout, created_at}`, 404 when nothing is saved |
@@ -184,7 +185,7 @@ The shell must therefore ack **every** `ui.command`, including refusals. `engine
 - **Open decision:** runs are kept in memory (the last 200 finished runs). Engine requests, tasks, approvals and receipts are already durable in SQLite. Persist runs only if the shell needs history across restarts.
 - **Open decision:** a clarify answer is treated as the new full instruction ("open browser"), not as a fragment ("browser"). The shell should prefill the original text in the clarify bubble.
 - Cancelling mid-execution can leave an execution started without a receipt. The gateway reports it as `unknown_outcome` on the next attempt, which is the intended reconcile path (doc 03 §7).
-- **Not yet implemented (Agent-owned in the diagram):** `POST /api/v1/tools/{tool_id}/invoke` and `PATCH /api/v1/tools/{tool_id}`.
+- **Not yet implemented (Agent-owned in the diagram):** `POST /api/v1/tools/{tool_id}/invoke`. `PATCH /api/v1/tools/{tool_id}` is implemented as tighten-only (issue #30); loosening a tool's policy needs design sign-off.
 - **Engine differs from the diagram's MAIN GRAPH:** the engine's 12 nodes do not use `Send` fan-out, `interrupt()`/`Command(resume=…)`, or `thread_id = session_id`. Confirm goes through the C5 approval service, and a clarify answer starts a child request (`parent_request_id`). The wire contract above is the same either way.
 - `session_id` must be a UUID (C1 contract), not a short id like the diagram's `s_8f2c` example.
 - Tool ids are flat (`open_application`), not the diagram's `module.action` form.

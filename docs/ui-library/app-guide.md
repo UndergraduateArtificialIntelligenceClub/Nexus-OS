@@ -176,9 +176,12 @@ like the clock does.
 | Pressable control | `.chip` / `.chip--action` classes | `Button`, `Chip`, `IconButton` *(P0–P1)* |
 | Text/data block | `.w-mono` | `Text`, `Mono`, `Label` *(P0)* |
 | Loading | `AsciiSpinner` from `@/ui` | unchanged |
-| Inputs | hand-rolled | `Input`, `Textarea`, `SearchField`, `Switch` *(P0–P1)* |
+| Inputs | `Input`, `Textarea`, `SearchField` | unchanged |
+| Toggles | `Switch`, `Checkbox`, `RadioGroup` (`role="switch"`, `[x]`/`[ ]` + on/off) | unchanged |
+| Tags / facts | `Badge` (`tone="accent"` for the one that matters) | unchanged |
 | Meters | hand-rolled `[###...]` | `Meter` / `AsciiMeter` *(P1)* |
-| Empty state | hand-rolled line | `EmptyState` *(P1)* |
+| Empty / loading / error | `EmptyState`, `MediaStates` | unchanged |
+| A tool, as a row | `ToolCard`: `status` for a call in flight; omit it and use `meta` (badges) + `actions` (a `Switch`) for a catalogue row — see the Tools manager | unchanged |
 | Popovers/dialogs | **don't** build ad-hoc | `Popover`, `Dialog` *(P1)* — wait for them |
 | Media | — | `MediaSurface` kit *(§8)* |
 
@@ -212,6 +215,38 @@ Because you stay mounted while minimized: pause intervals, video, and fetches wh
 `mode === 'minimized'` or when your box leaves the viewport
 (`useMediaLifecycle` *(planned P1)* wraps this; until then, a visibility check in
 your effects is enough).
+
+### 6.1 Reading engine data, with an offline fixture
+
+Worked example: the Tools manager (`src/internal-apps/tools/`, issue #30). Use the
+same shape for any widget that shows engine data before the shell shares an
+engine client (#41).
+
+1. **A source seam** (`frontend/src/source.ts`) — an interface with the calls the
+   widget needs (`list()`, `setRequireApproval()`), and three implementations:
+   - `engineSource(client)` wraps `engineClient` (`src/shell/agent/engineClient.ts`;
+     add the REST call there, typed in `src/types/agentEvents.ts`).
+   - `createFixtureSource()` mirrors the engine's real response, with a small
+     artificial delay so loading states render, and keeps the user's changes in
+     `localStorage` (`nexus-tools`, try/catch, versioned envelope). It applies the
+     same rules as the engine (here: tighten-only), so offline behaviour never
+     promises something live mode would refuse.
+   - `withFallback(primary, fixture)` tries the engine on **every** load with a
+     1500 ms budget (as `wm/workspacePersistence.ts` does), falls back to the
+     fixture, and exposes `mode: 'live' | 'offline'`. Writes go to whichever
+     source served the last load: an offline change is never passed off as
+     saved to the engine, and a failed live write surfaces as an error.
+2. **A pure view** that takes the source as a prop (`ToolsManager({ size, source })`),
+   and a thin registry component that builds the default source. Tests render
+   the view with `createFixtureSource()` — no mocks, no network.
+3. **Say which one you are showing.** Show `Badge` "offline · fixture" when
+   `mode === 'offline'`, and offer a refresh.
+4. **States:** `MediaStates` loading → error (retry) → empty; never a blank cell.
+5. **Optimistic writes, honest rollback:** update the row, call the source, put
+   the old row back and show a one-line `role="alert"` note if the call fails.
+6. **Locked controls explain themselves:** a disabled `Switch` gets a reason
+   (row `title`, and a visible hint at the wide size), e.g. "network tools
+   always ask first".
 
 ---
 

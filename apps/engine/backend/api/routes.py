@@ -5,7 +5,8 @@
     POST /api/v1/agent/runs/{run_id}/resume    answer an interrupt  -> 202
     POST /api/v1/agent/runs/{run_id}/cancel    stop a run
     GET  /api/v1/agents[?session_id=]          agent roster (read-only)
-    GET  /api/v1/tools                         registered tool contracts
+    GET  /api/v1/tools                         registered tools + scope, policy, last use
+    PATCH /api/v1/tools/{tool_id}              require approval for a tool (tighten-only)
     PUT  /api/v1/workspaces/{workspace_id}     persist_workspace: save a shell layout
     GET  /api/v1/workspaces/{workspace_id}     load a saved shell layout (restore on launch)
     GET  /api/v1/health
@@ -33,6 +34,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from agent.core import CoreEngine
 from api.agents import AgentRoster
+from api.tools import PatchToolBody, list_tool_views, set_require_approval
 from api.events import CLIENT_EVENTS, EventType, Source, WsEnvelope, api_error
 from api.hub import SessionHub
 from api.runs import RunConflict, RunManager, RunNotFound
@@ -186,21 +188,14 @@ def create_v1_router(get_runtime: Callable[[], ApiRuntime]) -> APIRouter:
 
     @router.get("/tools")
     async def list_tools() -> dict[str, Any]:
-        entries = get_runtime().engine.registry.all_entries()
-        return {"tools": [
-            {
-                "tool_id": entry.tool_id,
-                "version": entry.version,
-                "capability_group": entry.capability_group,
-                "description": entry.description,
-                "risk": entry.risk.value,
-                "side_effect": entry.side_effect,
-                "native": entry.native,
-                "availability": entry.availability,
-                "input_schema": entry.input_model.model_json_schema(),
-            }
-            for entry in entries
-        ]}
+        return {"tools": list_tool_views(get_runtime().engine)}
+
+    @router.patch("/tools/{tool_id}")
+    async def patch_tool(tool_id: str, body: PatchToolBody):
+        view = set_require_approval(get_runtime().engine, tool_id, body.require_approval)
+        if view is None:
+            return _error(404, "TOOL_UNAVAILABLE", f"tool {tool_id} is not registered")
+        return {"tool": view}
 
     @router.put("/workspaces/{workspace_id}")
     async def persist_workspace(workspace_id: str, body: PersistWorkspaceBody):
@@ -293,7 +288,7 @@ def install_local_cors(app: FastAPI) -> None:
     app.add_middleware(
         CORSMiddleware,
         allow_origin_regex=LOCAL_ORIGIN_REGEX,
-        allow_methods=["GET", "POST", "PUT"],
+        allow_methods=["GET", "POST", "PUT", "PATCH"],
         allow_headers=["content-type"],
     )
 

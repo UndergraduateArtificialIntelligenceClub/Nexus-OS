@@ -178,3 +178,12 @@ CREATE TABLE IF NOT EXISTS audit_events (
   detail TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL
 );
+
+-- Per-tool policy overrides set from the Tools manager (issue #30).
+-- Tighten-only: a row can add an approval requirement, never remove one the
+-- registry/settings already impose (doc 06 stop-and-ask).
+CREATE TABLE IF NOT EXISTS tool_policy_overrides (
+  tool_id TEXT PRIMARY KEY,
+  require_approval INTEGER NOT NULL,
+  updated_at TEXT NOT NULL
+);

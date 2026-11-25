@@ -96,7 +96,10 @@ class CoreEngine:
         self.repos = Repositories(self.session_manager)
         self.registry = self._build_registry()
         self.approver = ApprovalService(self.repos, self.settings)
-        self.policy = Policy(self.registry, self.settings, approval_service=self.approver)
+        self.policy = Policy(
+            self.registry, self.settings, approval_service=self.approver,
+            overrides=self.repos.tool_overrides,
+        )
         self.gateway = ExecutionGateway(
             self.registry, self.policy, self.repos, self.settings,
             desktop_bridge=desktop_bridge or DesktopBridge(base_url=None),

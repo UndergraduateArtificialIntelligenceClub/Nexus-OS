@@ -94,6 +94,18 @@
   flex: none;
 }
 
+.nx-toolcard-meta {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--s-xs);
+}
+
+.nx-toolcard-actions {
+  flex: none;
+  margin-left: auto;
+}
+
 /* --- Streaming text internals --- */
 
 /* The typing trick: hold the final size while the text arrives. */

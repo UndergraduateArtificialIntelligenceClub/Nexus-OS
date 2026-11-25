@@ -185,7 +185,7 @@ class ExecutionGateway:
         if payload["proposal_fingerprint"] != execution.proposal_fingerprint:
             return False
         if (not payload.get("side_effect") and payload["risk"] == entry.risk == RiskClass.read_only
-                and not self._policy.requires_network_approval(entry)):
+                and not self._policy.requires_approval(entry)):
             return True  # read-only, no side effect: no approval binding required
 
         # Side-effecting path: a valid, unexpired approval bound to the exact

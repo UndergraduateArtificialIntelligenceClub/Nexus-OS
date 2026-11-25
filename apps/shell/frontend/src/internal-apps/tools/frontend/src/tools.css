@@ -1,0 +1,109 @@
+/* Tools manager widget. Tokens only — content styles, the frame is the shell's. */
+
+.w-tools {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-sm);
+  min-height: 0;
+  color: var(--ink);
+}
+
+.w-tools-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-sm);
+  flex: none;
+}
+
+.w-tools-refresh {
+  margin-left: auto;
+}
+
+.w-tools-note {
+  margin: 0;
+  font: var(--fs-micro) var(--mono);
+  color: var(--ink);
+}
+
+.w-tools-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.w-tools-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+.w-tools-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.w-tools-row + .w-tools-row {
+  border-top: 1px solid var(--line);
+}
+
+.w-tools-row .nx-toolcard {
+  padding: var(--s-xs) 0;
+}
+
+/* Narrow (2x2): name + switch on one line, the facts wrap underneath. */
+.w-tools-list:not([data-wide]) .nx-toolcard {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+.w-tools-list:not([data-wide]) .nx-toolcard-meta {
+  order: 3;
+  flex-basis: 100%;
+}
+
+.w-tools-used,
+.w-tools-blocked,
+.w-tools-hint {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.w-tools-hint {
+  display: block;
+  padding-bottom: var(--s-xs);
+}
+
+/* The Switch keeps its full accessible name; only the glyph + on/off show. */
+.w-tools-switch .nx-mark-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Locked rows stay legible: "[x] on" is information, not a dead control. */
+.w-tools-switch:disabled {
+  opacity: 0.6;
+}
+
+.w-tools-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--muted);
+}
+
+.w-tools-summary p {
+  margin: 0;
+}
+
+.w-tools-big {
+  font: var(--fs-mono) var(--mono);
+  color: var(--ink);
+}

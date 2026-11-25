@@ -160,4 +160,13 @@ describe('<ToolCard>', () => {
     render(<ToolCard name="open_note" status="done" ack="failed" />)
     expect(screen.getByText('no ack')).toBeInTheDocument()
   })
+
+  it('renders a catalogue row with meta and actions but no glyph', () => {
+    render(<ToolCard name="file_search" meta={<span>read</span>} actions={<button>toggle</button>} />)
+    const card = screen.getByText('file_search').closest('.nx-toolcard')
+    expect(card).not.toHaveAttribute('data-status')
+    expect(card?.querySelector('.nx-toolcard-glyph')).toBeNull()
+    expect(card?.querySelector('.nx-toolcard-meta')?.textContent).toBe('read')
+    expect(card?.querySelector('.nx-toolcard-actions button')).not.toBeNull()
+  })
 })

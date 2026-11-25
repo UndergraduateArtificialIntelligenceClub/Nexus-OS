@@ -140,3 +140,63 @@ def test_policy_destructive_requires_approval(policy: Policy):
     assert decision.approval is not None
     assert decision.approval.status == ApprovalStatus.pending
     assert decision.approval.expires_at
+
+
+# -- user overrides (Tools manager, issue #30) ---------------------------------
+
+
+class _Overrides:
+    def __init__(self, *tool_ids: str) -> None:
+        self._ids = set(tool_ids)
+
+    def require_approval(self, tool_id: str) -> bool:
+        return tool_id in self._ids
+
+
+def _diagnostics_packet() -> TaskPacket:
+    return TaskPacket(
+        task_id=TASK, request_id=REQUEST, assigned_to=AgentRole.recipe,
+        objective="Run local system diagnostics",
+        allowed_capabilities=["system_diagnostics"],
+        idempotency_key="diag:" + REQUEST,
+    )
+
+
+def _diagnostics_proposal(packet: TaskPacket) -> ToolProposal:
+    return make_proposal(
+        packet, tool_id="system_diagnostics", args={}, target_refs=["engine:local"],
+        reason="diagnostics", risk="read_only", side_effect=False,
+    )
+
+
+def test_user_override_makes_a_read_tool_require_approval(tmp_path):
+    settings = EngineSettings.for_test(tmp_path)
+    packet = _diagnostics_packet()
+    proposal = _diagnostics_proposal(packet)
+    plain = Policy(ToolRegistry(), settings)
+    assert plain.evaluate(proposal, packet).outcome == DecisionOutcome.auto_approve
+    tightened = Policy(ToolRegistry(), settings, overrides=_Overrides("system_diagnostics"))
+    decision = tightened.evaluate(proposal, packet)
+    assert decision.outcome == DecisionOutcome.approval_required
+    assert decision.reason == "approval required by user policy"
+    assert decision.approval is not None
+
+
+def test_static_outcome_matches_registry_defaults(policy: Policy):
+    registry = ToolRegistry()
+    outcomes = {entry.tool_id: policy.static_outcome(entry) for entry in registry.all_entries()}
+    auto = {tool for tool, outcome in outcomes.items() if outcome == DecisionOutcome.auto_approve}
+    assert auto == {"system_diagnostics", "file_search", "memory_lookup", "document_read"}
+    for entry in registry.all_entries():
+        assert policy.base_requires_approval(entry) == (entry.tool_id not in auto)
+
+
+def test_override_never_loosens_a_locked_tool(tmp_path):
+    settings = EngineSettings.for_test(tmp_path)
+    registry = ToolRegistry()
+    tightened = Policy(registry, settings, overrides=_Overrides("search_web", "file_search"))
+    assert tightened.static_outcome(registry.get("search_web")) == DecisionOutcome.approval_required
+    assert tightened.static_outcome(registry.get("file_search")) == DecisionOutcome.approval_required
+    assert tightened.static_outcome(
+        registry.get("file_search"), include_overrides=False
+    ) == DecisionOutcome.auto_approve

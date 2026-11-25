@@ -67,6 +67,12 @@ class ApprovalStore(Protocol):
     def create(self, approval: ApprovalRequest, session_id: str) -> None: ...
 
 
+class ToolOverrides(Protocol):
+    """User per-tool overrides (``ToolOverrideRepository``, issue #30)."""
+
+    def require_approval(self, tool_id: str) -> bool: ...
+
+
 def canonical_json(value: Any) -> str:
     """Canonical serialization for fingerprinting (sorted keys, compact)."""
     return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
@@ -112,10 +118,12 @@ class Policy:
         registry: Any,
         settings: Any,
         approval_service: Optional["ApprovalService"] = None,
+        overrides: Optional[ToolOverrides] = None,
     ) -> None:
         self._registry = registry
         self._settings = settings
         self._approval_service = approval_service
+        self._overrides = overrides
         self.target_rules = TARGET_RULES
 
     # -- target rules ------------------------------------------------------
@@ -193,6 +201,40 @@ class Policy:
     def requires_network_approval(self, entry: Any) -> bool:
         return entry.capability_group == "network.web" and not self._settings.auto_approve_network_tools
 
+    def user_requires_approval(self, entry: Any) -> bool:
+        """The user turned on "require approval" for this tool (issue #30)."""
+        return self._overrides is not None and self._overrides.require_approval(entry.tool_id)
+
+    def requires_approval(self, entry: Any) -> bool:
+        """Approval is required regardless of risk class: network tools (unless
+        settings allow them) and tools the user tightened. The gateway uses the
+        same check, so an override cannot be bypassed on the read-only path."""
+        return self.requires_network_approval(entry) or self.user_requires_approval(entry)
+
+    def static_outcome(self, entry: Any, include_overrides: bool = True) -> DecisionOutcome:
+        """Proposal-free preview of ``evaluate`` for one registry entry, using
+        its registered risk and side effect (the Tools manager's policy column).
+        Must follow the same rule order as ``evaluate``."""
+        if entry.availability != "enabled":
+            return DecisionOutcome.denied
+        if self.requires_network_approval(entry) or (
+            include_overrides and self.user_requires_approval(entry)
+        ):
+            return DecisionOutcome.approval_required
+        if entry.risk == RiskClass.read_only and not entry.side_effect:
+            return DecisionOutcome.auto_approve
+        if entry.risk in (RiskClass.sensitive, RiskClass.destructive):
+            return DecisionOutcome.approval_required
+        if (entry.risk == RiskClass.reversible_write
+                and self._settings.auto_approve_reversible_write and not entry.side_effect):
+            return DecisionOutcome.auto_approve
+        return DecisionOutcome.approval_required
+
+    def base_requires_approval(self, entry: Any) -> bool:
+        """Approval is required even without a user override: the override
+        cannot change this tool (tighten-only, so its toggle is locked on)."""
+        return self.static_outcome(entry, include_overrides=False) != DecisionOutcome.auto_approve
+
     def evaluate(
         self,
         proposal: ToolProposal,
@@ -209,11 +251,13 @@ class Policy:
         # Side-effect claims escalate; they are never dialed back down.
         side_effect = entry.side_effect or proposal.side_effect
 
-        if self.requires_network_approval(entry):
+        if self.requires_approval(entry):
             if self._existing_approval(proposal.proposal_fingerprint, session_id) is None:
                 return PolicyDecision(
                     outcome=DecisionOutcome.approval_required,
-                    reason="network access requires approval",
+                    reason="network access requires approval"
+                    if self.requires_network_approval(entry)
+                    else "approval required by user policy",
                     approval=self._create_approval(proposal, session_id),
                 )
 
@@ -381,6 +425,7 @@ __all__ = [
     "PolicyDecision",
     "PolicyTargetRule",
     "TARGET_RULES",
+    "ToolOverrides",
     "ApprovalService",
     "canonical_json",
     "proposal_fingerprint",

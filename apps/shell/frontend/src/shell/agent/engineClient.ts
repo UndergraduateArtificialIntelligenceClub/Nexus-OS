@@ -12,6 +12,7 @@ import type {
   AgentIdentity,
   ApiError,
   CreateRunBody,
+  EngineTool,
   RunSource,
   RunView,
   ServerEvent,
@@ -145,6 +146,16 @@ export function createEngineClient(options: EngineClientOptions = {}) {
     /** Agent roster for this session; live changes arrive as agent.updated. */
     listAgents: () =>
       request<{ agents: AgentIdentity[] }>('GET', `/agents?session_id=${sessionId}`).then((body) => body.agents),
+
+    /** Registered tools with scope, current policy and last use (issue #30). */
+    listTools: () => request<{ tools: EngineTool[] }>('GET', '/tools').then((body) => body.tools),
+
+    /** Require approval for a tool, or clear that override. Tighten-only: clearing
+     *  never loosens a tool whose policy already requires approval. */
+    setToolApproval: (toolId: string, requireApproval: boolean) =>
+      request<{ tool: EngineTool }>('PATCH', `/tools/${encodeURIComponent(toolId)}`, {
+        require_approval: requireApproval,
+      }).then((body) => body.tool),
 
     /** Call on every layout change; re-sent automatically after a reconnect. */
     pushWmState: (state: WmState) => {

@@ -11,6 +11,7 @@ import { SettingsApp } from '@/internal-apps/settings/frontend/src/App'
 import { SystemMonitorApp } from '@/internal-apps/system-monitor/frontend/src/App'
 import { TerminalApp } from '@/internal-apps/terminal/frontend/src/App'
 import { TimerApp } from '@/internal-apps/timer/frontend/src/App'
+import { ToolsApp } from '@/internal-apps/tools/frontend/src/App'
 import { WmApp } from '@/internal-apps/wm/frontend/src/App'
 import { SIZE_ORDER, type Size } from '@/wm/layout'
 import type { AppDef } from './types'
@@ -135,6 +136,16 @@ export const APPS = {
     fullscreen: false,
     phase: 'later',
     component: CalendarApp,
+  },
+  tools: {
+    label: 'tools',
+    glyph: '[%]',
+    sizes: ['2x1', '2x2', '4x2'],
+    defaultSize: '2x2',
+    aliases: ['tools', 'tool manager', 'permissions', 'approvals'],
+    fullscreen: false,
+    phase: 'mvp',
+    component: ToolsApp,
   },
 } satisfies Record<string, AppDef>
 

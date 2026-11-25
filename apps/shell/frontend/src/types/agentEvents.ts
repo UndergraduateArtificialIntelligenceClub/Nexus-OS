@@ -35,6 +35,36 @@ export interface AgentIdentity {
   updated_at: string
 }
 
+/** What a tool can touch (Tools manager, issue #30). */
+export type ToolScope = 'read' | 'mutate' | 'network'
+/** How policy gates a tool right now (engine `DecisionOutcome`). */
+export type ToolPolicy = 'auto_approve' | 'approval_required' | 'denied'
+export type ToolRisk = 'read_only' | 'reversible_write' | 'sensitive' | 'destructive'
+
+/** One registered agent tool. Mirrors `tool_view` in
+ *  apps/engine/backend/api/tools.py; change both together. */
+export interface EngineTool {
+  tool_id: string
+  version: string
+  capability_group: string
+  description: string
+  risk: ToolRisk
+  side_effect: boolean
+  native: boolean
+  /** `enabled` unless the registry switched the tool off. */
+  availability: string
+  /** Pydantic JSON Schema of the tool's arguments. */
+  input_schema?: unknown
+  scope: ToolScope
+  policy: ToolPolicy
+  /** The user turned on "require approval" (tighten-only override). */
+  require_approval: boolean
+  /** Policy already requires approval (or denies): the toggle cannot change it. */
+  policy_locked: boolean
+  /** Last gateway execution start (ISO 8601), or null if never run. */
+  last_used_at: string | null
+}
+
 export type UiAction =
   | 'open_app'
   | 'close_app'

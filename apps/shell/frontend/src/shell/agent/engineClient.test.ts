@@ -97,6 +97,34 @@ describe('engineClient', () => {
     expect(init.method).toBe('GET')
   })
 
+  it('lists tools from GET /tools', async () => {
+    const tool = { tool_id: 'file_search', scope: 'read', policy: 'auto_approve', require_approval: false, policy_locked: false, last_used_at: null }
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ tools: [tool] }), { status: 200 }))
+    const { client } = setup({ fetchImpl })
+    await expect(client.listTools()).resolves.toEqual([tool])
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('http://127.0.0.1:8000/api/v1/tools')
+    expect(init.method).toBe('GET')
+  })
+
+  it('sets a tool override with PATCH /tools/{id}', async () => {
+    const tool = { tool_id: 'file_search', policy: 'approval_required', require_approval: true }
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ tool }), { status: 200 }))
+    const { client } = setup({ fetchImpl })
+    await expect(client.setToolApproval('file_search', true)).resolves.toEqual(tool)
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('http://127.0.0.1:8000/api/v1/tools/file_search')
+    expect(init.method).toBe('PATCH')
+    expect(JSON.parse(String(init.body))).toEqual({ require_approval: true })
+  })
+
+  it('surfaces engine errors from setToolApproval', async () => {
+    const error = { code: 'TOOL_UNAVAILABLE', message: 'tool nope is not registered', details: {} }
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ error }), { status: 404 }))
+    const { client } = setup({ fetchImpl })
+    await expect(client.setToolApproval('nope', true)).rejects.toMatchObject({ status: 404, error })
+  })
+
   it('re-sends the last wm.state after reconnecting', () => {
     vi.useFakeTimers()
     const { client, socket } = setup()

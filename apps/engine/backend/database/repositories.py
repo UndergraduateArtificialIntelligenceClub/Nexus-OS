@@ -53,10 +53,11 @@ class Repositories:
         self.artifacts = ArtifactRepository(sm)
         self.audit = AuditRepository(sm)
         self.workspaces = WorkspaceRepository(sm)
+        self.tool_overrides = ToolOverrideRepository(sm)
         for repo in (self.sessions, self.requests, self.tasks, self.agent_runs,
                      self.proposals, self.approvals, self.executions,
                      self.memory_proposals, self.memories, self.artifacts,
-                     self.audit, self.workspaces):
+                     self.audit, self.workspaces, self.tool_overrides):
             repo._repos = self
 
     def audit_event(
@@ -364,6 +365,46 @@ class ExecutionRepository(BaseRepository):
         return self._fetch_one(
             "SELECT * FROM tool_executions WHERE execution_id = :eid", {"eid": execution_id}
         )
+
+    def last_used_by_tool(self) -> dict[str, str]:
+        """Most recent gateway execution start per tool (Tools manager, #30)."""
+        rows = self._fetch_all(
+            "SELECT tool_id, MAX(started_at) AS last_used_at FROM tool_executions GROUP BY tool_id"
+        )
+        return {row["tool_id"]: row["last_used_at"] for row in rows}
+
+
+class ToolOverrideRepository(BaseRepository):
+    """User policy overrides per tool (``tool_policy_overrides``, issue #30).
+
+    Tighten-only: an override can only *add* an approval requirement. Clearing
+    it falls back to the registry/settings policy; it never grants auto-run.
+    """
+
+    def get_all(self) -> dict[str, bool]:
+        rows = self._fetch_all("SELECT tool_id, require_approval FROM tool_policy_overrides")
+        return {row["tool_id"]: bool(row["require_approval"]) for row in rows}
+
+    def require_approval(self, tool_id: str) -> bool:
+        row = self._fetch_one(
+            "SELECT require_approval FROM tool_policy_overrides WHERE tool_id = :tid",
+            {"tid": tool_id},
+        )
+        return bool(row and row["require_approval"])
+
+    def set(self, tool_id: str, require_approval: bool) -> None:
+        self._exec(
+            """
+            INSERT INTO tool_policy_overrides (tool_id, require_approval, updated_at)
+            VALUES (:tid, :req, :ts)
+            ON CONFLICT(tool_id) DO UPDATE SET
+              require_approval = excluded.require_approval, updated_at = excluded.updated_at
+            """,
+            {"tid": tool_id, "req": 1 if require_approval else 0, "ts": utc_now_iso()},
+        )
+
+    def clear(self, tool_id: str) -> None:
+        self._exec("DELETE FROM tool_policy_overrides WHERE tool_id = :tid", {"tid": tool_id})
 
 
 class MemoryProposalRepository(BaseRepository):

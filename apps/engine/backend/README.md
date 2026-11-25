@@ -135,7 +135,7 @@ API flow surface (`/api/v1`, full reference in `docs/AI-Core/07-api-flow.md`):
 - `GET /api/v1/agent/runs/{run_id}`, `POST .../resume`, `POST .../cancel`
 - `GET /api/v1/agents[?session_id=]`: agent roster (contract in
   `docs/agents-manager/agent-identity.md`)
-- `GET /api/v1/tools`, `GET /api/v1/health`
+- `GET /api/v1/tools`, `PATCH /api/v1/tools/{tool_id}` (tighten-only `require_approval`), `GET /api/v1/health`
 - `PUT/GET /api/v1/workspaces/{workspace_id}`: shell layout persistence
   (`persist_workspace` / restore on launch) in SQLite `workspaces.layout`
   (issue #28). CORS allows only local shell origins (Vite, Tauri).

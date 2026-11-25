@@ -205,3 +205,18 @@ def test_invalid_approval_fingerprint_is_rejected(env):
         env.adapter_context, approved_session_id=SESSION))
     assert receipt.status == ReceiptStatus.failed
     assert receipt.error is not None and receipt.error.code == ErrorCode.POLICY_DENIED
+
+
+def test_user_override_blocks_read_only_execution_without_approval(env):
+    """The gateway's read-only shortcut must honour a Tools manager override
+    (issue #30); otherwise the approval prompt would be cosmetic."""
+    env.repos.tool_overrides.set("system_diagnostics", True)
+    pk = sysdiagnostics_packet()
+    env.repos.tasks.create(pk)
+    seeded_envelope(env, "diagnostics")
+    prop = sysdiagnostics_proposal(pk)
+    env.repos.proposals.create(prop, REQUEST)
+    receipt = run(env.gateway.execute(_execution(env, prop, "key:g:override"),
+                                      env.adapter_context, approved_session_id=SESSION))
+    assert receipt.status == ReceiptStatus.failed
+    assert receipt.error is not None and receipt.error.code == ErrorCode.POLICY_DENIED
