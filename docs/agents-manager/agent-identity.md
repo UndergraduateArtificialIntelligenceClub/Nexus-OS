@@ -60,6 +60,7 @@ Sent as `agent.updated` data and returned by `GET /api/v1/agents`:
 | `idle` | Known but not started. Planned tasks wait here until their `task:` dependencies finish |
 | `running` | Actually executing (supervisor: the graph is running; worker: the worker pass is running) |
 | `waiting` | Blocked on a human decision: a pending approval (confirm) or a clarify question. Nothing else is `waiting` |
+| `paused` | The run is paused by a roster verb (#57); it resumes with `resume`. Emitted once the engine lands cooperative pause — part of the shared vocabulary already |
 | `done` | Finished; see `last_activity` for how |
 | `error` | A real failure: failed tool or receipt, policy denial, engine failure, or an unverifiable side effect (`unknown_outcome`) |
 
@@ -129,10 +130,16 @@ reason instead of looking alive:
 - **Cancelled is `done`.** The status set has no `cancelled`; a cancelled
   agent is `done` with `last_activity: "cancelled"`. Adding a status is a
   contract change for #55.
-- **Rejecting an approval asks again.** Existing engine behavior, not part of
-  this contract: after `resume: "no"` the worker runs again and policy creates
-  a new approval, so the task goes back to `waiting`. The roster reports this
-  as it happens. Fixing the reject path belongs with #58
-  (interrupt → deny → clean failure).
-- **No verbs yet.** pause / resume / cancel / retry per agent are #57; this
-  contract is read-only.
+- **Deny is a clean failure.** Answering a confirm with `no` fails the task
+  (`POLICY_DENIED "user rejected the action"`) and the row shows the reason
+  in its `error` state; the engine never re-asks the same question (#58).
+  An interrupt left unheard past its approval expiry follows the timeout
+  policy (`auto_deny` by default, `escalate` re-issues first).
+- **Verbs landed (#57).** `POST /api/v1/agents/{agent_id}/{verb}` maps a row
+  onto its run: supervisors carry `pause` / `resume` / `cancel` / `retry`;
+  task rows get `cancel` while `running` / `waiting`, `retry` on `error`, and
+  `run_now` while `idle`. A task's cancel stops its own `retry` / `run_now`
+  pass (the row ends `done` with `cancelled`), not its siblings or the run. A
+  pause is cooperative - the current node, with any in-flight tool call,
+  completes first - and a verb the engine cannot honestly perform is a typed
+  `409`, never a silent no. See `docs/AI-Core/07-api-flow.md` "Roster verbs".

@@ -193,6 +193,51 @@ class Policy:
     def requires_network_approval(self, entry: Any) -> bool:
         return entry.capability_group == "network.web" and not self._settings.auto_approve_network_tools
 
+    def proposal_requires_approval(self, proposal: ToolProposal) -> bool:
+        """Pure risk check for a stored proposal (never creates an approval).
+
+        ``evaluate`` answers the same question for live proposals and then
+        persists the C5 object. The roster verb gate (#57) uses this form to
+        decide whether stopping running work needs the human's word too.
+        """
+        try:
+            entry = self._registry.get(proposal.tool_id)
+        except KeyError:
+            return False
+        if self.requires_network_approval(entry):
+            return True
+        risk = self.effective_risk(entry.risk, proposal.risk)
+        side_effect = entry.side_effect or proposal.side_effect
+        if risk == RiskClass.read_only and not side_effect:
+            return False
+        if side_effect or risk in (RiskClass.sensitive, RiskClass.destructive):
+            return True
+        if risk == RiskClass.reversible_write:
+            return not (self._settings.auto_approve_reversible_write and not side_effect)
+        return False
+
+    def decide_verb(self, verb: str, *, mutating_task: bool = False) -> PolicyDecision:
+        """Gate every roster verb (#57) against the same risk rules as the
+        work it touches. A control that cannot apply new mutations is
+        auto-approved; stopping a mutating task needs the approval that the
+        task itself needed, through the run's ``run.interrupt`` path."""
+        if not mutating_task:
+            return PolicyDecision(
+                outcome=DecisionOutcome.auto_approve,
+                reason="the verb does not change approved mutating work",
+            )
+        if verb == "cancel":
+            return PolicyDecision(
+                outcome=DecisionOutcome.approval_required,
+                reason="stopping mutating work requires the same approval as the work itself",
+            )
+        # retry / run_now re-run the exact packet: that pass's own C5 approval
+        # is re-evaluated and fingerprint-bound, so no second prompt is needed.
+        return PolicyDecision(
+            outcome=DecisionOutcome.auto_approve,
+            reason="the task's own approval path is re-evaluated",
+        )
+
     def evaluate(
         self,
         proposal: ToolProposal,

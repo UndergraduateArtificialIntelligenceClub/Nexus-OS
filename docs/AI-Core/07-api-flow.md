@@ -34,6 +34,11 @@ shell ══WS═══▶ ui.command.ack, wm.state
 | `POST` | `/api/v1/agent/runs/{run_id}/resume` | `{resume: "yes"\|"no"\|true\|false}` for confirm, `{resume: "<text>"}` for clarify | `202` run view, `409` if nothing is pending |
 | `POST` | `/api/v1/agent/runs/{run_id}/cancel` | – | Run view with `status: "cancelled"`; a pending approval is rejected |
 | `GET` | `/api/v1/agents?session_id={uuid}` | – | `{agents: [AgentIdentity]}` roster; `session_id` optional (all sessions when omitted), `400` if not a UUID. See [agent identity](../agents-manager/agent-identity.md) |
+| `POST` | `/api/v1/agents/{agent_id}/pause` | – | `202 {verb, agent_id, run}` — roster verbs (#57). `409 CONFLICT` when the engine cannot honestly perform the verb for that agent, `404` when it is not on the roster. See [verbs](#roster-verbs) |
+| `POST` | `/api/v1/agents/{agent_id}/resume` | – | Continue a **paused** run from its checkpoint (not the interrupt answer) |
+| `POST` | `/api/v1/agents/{agent_id}/cancel` | – | Stop the agent's run, without asking: the in-flight call completes first, then the run closes |
+| `POST` | `/api/v1/agents/{agent_id}/retry` | – | A failed run restarts as a new run of the same request; a failed task re-runs a new attempt |
+| `POST` | `/api/v1/agents/{agent_id}/run_now` | – | Start planned (idle) work now, when its own dependencies are satisfied |
 | `GET` | `/api/v1/tools` | – | Registered tool contracts incl. `input_schema` (JSON Schema) |
 | `GET` | `/api/v1/health` | – | `{status, service, api_version, model_provider}` |
 | `PUT` | `/api/v1/workspaces/{workspace_id}` | `{name?, layout}` | `persist_workspace`: upsert the shell's layout envelope `{version, savedAt, session}` into SQLite `workspaces.layout` → `{saved, workspace_id, saved_at}` (400 bad id/envelope, 413 over 256 KiB) |
@@ -89,11 +94,34 @@ Events only go to sockets of the same `session_id`. If no socket is open, events
 | interrupt `kind` | `confirm`, `clarify` |
 | task `status` | `queued`, `running`, `done`, `failed`, `skipped` (only `done`/`failed`/`skipped` are emitted today) |
 | `run.completed` `status` | `ok`, `failed`, `cancelled` |
-| `agent.updated` `status` | `idle`, `running`, `waiting`, `done`, `error` |
+| `agent.updated` `status` | `idle`, `running`, `waiting`, `paused`, `done`, `error` |
 | `ui.command` `action` | `open_app`, `close_app`, `focus`, `move`, `resize`, `minimize`, `maximize`, `restore`, `snap`, `set_avatar_position` |
 | avatar position | `top_left`, `top_center`, `top_right`, `center`, `bottom_left`, `bottom_center`, `bottom_right` |
 
-REST run `status` (`GET /agent/runs/{run_id}`) is `received`, `running`, `awaiting_input`, `completed`, `failed`, `cancelled`. It is API-level; the engine's request statuses (doc 02 vocabulary) are unchanged underneath, and a run's `request_ids` point at them. C9 task results map to task `status` as `completed` → `done`, `failed` → `failed`, `blocked` → `skipped`.
+REST run `status` (`GET /agent/runs/{run_id}`) is `received`, `running`, `awaiting_input`, `paused`, `completed`, `failed`, `cancelled`. It is API-level; the engine's request statuses (doc 02 vocabulary) are unchanged underneath, and a run's `request_ids` point at them. C9 task results map to task `status` as `completed` → `done`, `failed` → `failed`, `blocked` → `skipped`.
+
+## Roster verbs
+
+`POST /api/v1/agents/{agent_id}/{verb}` (#57) maps a roster row onto its run's controls. The verbs are honest about what the engine can perform, and a verb that does not fit the row's status is a typed `409 CONFLICT`, never a silent no:
+
+| Verb | Who | When it works | What happens |
+|---|---|---|---|
+| `pause` | supervisor | run `running` | Cooperative: the current node — including an in-flight tool call — **completes first**, then the run halts at a node boundary (`paused`). No half-applied mutations |
+| `resume` | supervisor | run `paused` | The run continues from its checkpoint |
+| `cancel` | supervisor / task | run / a running or waiting task | On a supervisor, the same cooperative stop: the in-flight call completes first, then the run closes. On a task, only its own `retry` / `run_now` pass stops (hard); work dispatched by the main graph has no per-task node boundary and answers `409` — use the run's cancel. A started call without a receipt reconciles as `unknown_outcome`. Stopping work that already needed approval asks for it again through `run.interrupt` |
+| `retry` | supervisor / task | failed run / errored task | The run restarts as a new run of the same request; the task re-runs a fresh bounded pass (attempt + 1) while its run is paused |
+| `run_now` | task | `idle`, deps satisfied, run paused | The planned task starts now; if its pass needs a human, the paused run takes the interrupt, so the ask stays answerable |
+
+Worker passes cannot be paused or resumed individually (they run inside the graph's nodes) — those verbs are supervisor-only and refused with `409` on a task row. A task's `cancel` stops only the bounded pass a `retry` / `run_now` started; the run and its other tasks keep going.
+
+Every verb passes a deterministic policy gate (#57). Controls that cannot apply a new mutation are auto-approved. Stopping a mutating task that is already in flight is gated: the command returns `202 {verb, agent_id, run, approval_required: true}` with the run in `awaiting_input`, raises a normal `run.interrupt`, and applies the verb only when that approval is answered with `POST /agent/runs/{run_id}/resume`. A denial leaves the work running; the run's existing timeout policy (#58) closes an unanswered ask.
+
+### Interrupt denial and timeouts (#58)
+
+Answering a confirm with `no` (`POST /agent/runs/{run_id}/resume`) is a **clean failure**: the task fails with `POLICY_DENIED "user rejected the action"`, the roster row shows the reason in its `error` state, and the same question is never asked twice. An interrupt left unheard past its approval expiry is handled by policy (`NEXUS_INTERRUPT_TIMEOUT_POLICY`):
+
+- `auto_deny` (default) — the run fails cleanly with `APPROVAL_EXPIRED`; rows show the timeout reason.
+- `escalate` — the ask is re-issued with a fresh expiry (up to `NEXUS_INTERRUPT_MAX_ESCALATIONS`, default 2), the avatar shows `error` while it waits, then the run is denied.
 
 ## Avatar mapping
 

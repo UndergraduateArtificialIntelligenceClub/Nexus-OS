@@ -135,6 +135,10 @@ API flow surface (`/api/v1`, full reference in `docs/AI-Core/07-api-flow.md`):
 - `GET /api/v1/agent/runs/{run_id}`, `POST .../resume`, `POST .../cancel`
 - `GET /api/v1/agents[?session_id=]`: agent roster (contract in
   `docs/agents-manager/agent-identity.md`)
+- `POST /api/v1/agents/{agent_id}/{pause|resume|cancel|retry|run_now}`:
+  roster verbs (#57), typed `409` when the engine cannot honestly perform
+  them (a pause or cancel completes the in-flight tool call first, then
+  stops - never a prompt)
 - `GET /api/v1/tools`, `GET /api/v1/health`
 - `PUT/GET /api/v1/workspaces/{workspace_id}`: shell layout persistence
   (`persist_workspace` / restore on launch) in SQLite `workspaces.layout`

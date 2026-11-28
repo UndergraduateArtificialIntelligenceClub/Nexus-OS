@@ -13,7 +13,7 @@
 
 .w-agents-head {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--s-sm);
   flex-wrap: wrap;
@@ -23,12 +23,20 @@
   display: flex;
   align-items: center;
   gap: var(--s-sm);
+  min-width: 0;
 }
 
 .w-agents-summary {
+  min-width: 0;
+  max-width: 100%;
   color: var(--muted);
   font-size: var(--fs-micro);
   text-align: right;
+  /* `.nx-mono` is `pre`; force wrapping so a long summary (e.g. 14 agents · … · 2 error)
+     never pokes past the widget's right edge, while staying aligned with the heading. */
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* --- Offline banner --- */
@@ -121,6 +129,78 @@
 .w-agents-row[data-kind='task'] {
   padding-left: var(--s-lg);
 }
+
+/* --- Row verbs (#57) and the waiting marker (#58) --- */
+
+.w-agents-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-xs);
+  padding: 0 var(--s-sm);
+  margin-top: -1px;
+}
+
+.w-agents-actions[data-kind='task'] {
+  padding-left: calc(var(--s-lg) + var(--s-sm));
+}
+
+.w-agents-decision {
+  color: var(--accent);
+  font: var(--fs-micro) var(--mono);
+  white-space: nowrap;
+}
+
+.w-agents-verb {
+  padding: 0 var(--s-sm);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-row);
+  background: transparent;
+  color: var(--muted);
+  font: var(--fs-micro) var(--mono);
+  line-height: 1.5;
+  cursor: pointer;
+  transition:
+    border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.w-agents-verb:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.w-agents-verb:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* --- Interrupt panel (#58): on the row that opened it --- */
+
+.w-agents-interrupt {
+  margin-top: var(--s-xs);
+  padding: var(--s-xs) var(--s-sm) 0;
+}
+
+.w-agents-interrupt[data-kind='task'] {
+  padding-left: calc(var(--s-lg) + var(--s-sm));
+}
+
+.w-agents-interrupt-loading,
+.w-agents-interrupt-hint {
+  margin: 0;
+  padding: 0 var(--s-sm);
+  color: var(--muted);
+  font: var(--fs-micro) var(--mono);
+}
+
+.w-agents-interrupt-loading[data-kind='task'] {
+  padding-left: calc(var(--s-lg) + var(--s-sm));
+}
+
+.w-agents-interrupt-hint {
+  margin-top: var(--s-xs);
+}
+
 
 /* Offline: the rows are the last thing the engine said, not current state. */
 .w-agents[data-connection='offline'] .w-agents-state,

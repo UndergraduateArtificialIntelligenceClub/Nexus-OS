@@ -1,10 +1,35 @@
 // Test helpers: wire identities and a roster feed the test drives by hand.
 
 import { vi } from 'vitest'
-import type { AgentIdentity, AgentUpdatedEvent, ServerEvent } from '@/types/agentEvents'
+import type { AgentIdentity, AgentUpdatedEvent, Interrupt, RunView, ServerEvent } from '@/types/agentEvents'
 import type { FeedHandlers, RosterFeed } from './roster'
 
 export const T0 = '2026-11-23T10:00:00Z'
+
+export const INTERRUPT: Interrupt = {
+  kind: 'confirm',
+  message: 'Allow open_application (reversible_write) targeting app:browser',
+  options: ['yes', 'no'],
+}
+
+/** A run view in the contract's shape; the interrupt is what `open` surfaces (#58). */
+export function runView(patch: Partial<RunView> = {}): RunView {
+  return {
+    run_id: 'run-1',
+    session_id: 'session',
+    source: 'text',
+    status: 'awaiting_input',
+    agent_state: 'waiting',
+    route: null,
+    request_ids: [],
+    response: null,
+    interrupt: INTERRUPT,
+    errors: [],
+    created_at: T0,
+    updated_at: T0,
+    ...patch,
+  }
+}
 
 export function agent(id: string, patch: Partial<AgentIdentity> = {}): AgentIdentity {
   return {
@@ -45,6 +70,9 @@ export function fakeFeed() {
       lists.push(next)
       return next.promise
     }),
+    command: vi.fn(() => Promise.resolve({})),
+    getRun: vi.fn(() => Promise.resolve(runView())),
+    resume: vi.fn(() => Promise.resolve(runView({ status: 'running', interrupt: null }))),
     open(next) {
       handlers = next
       return close

@@ -94,6 +94,11 @@ class AgentRoster:
         return [record.view() for record in self._agents.values()
                 if session_id is None or record.session_id == session_id]
 
+    def get(self, agent_id: str) -> Optional[dict[str, Any]]:
+        """One roster row, or None when the engine does not know the agent."""
+        record = self._agents.get(agent_id)
+        return record.view() if record is not None else None
+
     # ------------------------------------------------------------------
     # Run transitions (called by RunManager)
     # ------------------------------------------------------------------
@@ -102,8 +107,18 @@ class AgentRoster:
         self._upsert(supervisor_id(run_id), SUPERVISOR_ROLE, SUPERVISOR_ROLE,
                      run_id, session_id, AgentStatus.running, activity)
 
+    def run_paused(self, run_id: str, activity: str) -> None:
+        """#57: a cooperative pause halts the supervisor; its task rows keep
+        the statuses their completed passes left them with."""
+        self._update(supervisor_id(run_id), AgentStatus.paused, activity)
+
     def run_waiting(self, run_id: str, activity: str) -> None:
         self._update(supervisor_id(run_id), AgentStatus.waiting, activity)
+
+    def task_cancelled(self, agent_id: str) -> None:
+        """#57: a cancelled task is `done` with that word in its activity; the
+        status set has no `cancelled` (agent identity contract)."""
+        self._update(agent_id, AgentStatus.done, "cancelled")
 
     def run_finished(self, run_id: str, status: AgentStatus, activity: str) -> None:
         """Close the run: the supervisor takes ``status``; worker agents

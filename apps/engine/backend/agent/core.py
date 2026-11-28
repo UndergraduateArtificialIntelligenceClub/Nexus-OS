@@ -18,6 +18,7 @@ from agent.execution.gateway import ExecutionGateway
 from agent.execution.policy import ApprovalService, Policy, proposal_fingerprint
 from agent.graphs import recipes as recipe_module
 from agent.graphs.main_graph import CoreServices, build_main_graph
+from agent.graphs.run_gate import RunGate
 from agent.graphs.worker_graph import TaskWorker
 from agent.memory.service import MemoryService
 from agent.agents.discovery import DiscoveryAgent, EvidenceTarget, parse_discovery_query
@@ -115,6 +116,8 @@ class CoreEngine:
             self.model = None
         self.supervisor = Supervisor(self.registry, self.settings, self.model)
         self.discovery = DiscoveryAgent()
+        # Cooperative stop requests checked at main-graph node boundaries (#57).
+        self.run_gate = RunGate()
         self.adapter_context = AdapterContext(repos=self.repos, settings=self.settings)
         self.worker = TaskWorker(self)
         self.checkpointer = None
@@ -338,6 +341,33 @@ class CoreEngine:
         return None
 
     # ------------------------------------------------------------------
+    # Paused-run continuation (issue #57)
+    # ------------------------------------------------------------------
+
+    async def continue_request(
+        self,
+        request_id: str,
+        on_graph_event: Optional[GraphEventCallback] = None,
+    ) -> CoreRequestResult:
+        """Continue a paused run from its last checkpoint. The gate stops the
+        graph at a node *boundary* (the current node always finished first),
+        so the checkpointer holds the state and the pending node simply
+        re-runs; passing ``None`` as input resumes instead of restarting."""
+        await self.ensure_main_graph()
+        self.envelope_for(request_id)  # validates the paused thread exists
+        config = {"configurable": {"thread_id": request_id}}
+        if on_graph_event is None:
+            raw_state = await self.main_graph.ainvoke(None, config)
+        else:
+            async for event in self.main_graph.astream(None, config, stream_mode="debug"):
+                await _forward_graph_event(event, on_graph_event)
+            raw_state = (await self.main_graph.aget_state(config)).values
+        state = raw_state if isinstance(raw_state, MainGraphState) else MainGraphState.model_validate(raw_state)
+        result = self._result_from_state(state)
+        self.repos.audit.append("request_resumed", request_id, None, {"resumed_from": "paused"})
+        return result
+
+    # ------------------------------------------------------------------
     # Approval resume path (awaiting_approval -> decide -> continue)
     # ------------------------------------------------------------------
 
@@ -346,7 +376,9 @@ class CoreEngine:
     ) -> CoreRequestResult:
         """Continue bounded work after a human decision. The resumed run is a
         new request record (child of the original) with the same proposal
-        fingerprint, so the approval stays bound to exact work."""
+        fingerprint, so the approval stays bound to exact work. A rejection is
+        a clean failure (#58): the task fails with the typed reason and the
+        engine never re-asks the same question."""
         ok, reason = self.approver.decide(approval_id, decision, session_id)
         approval_row = self.repos.approvals.get(approval_id)
         if approval_row is None:
@@ -357,7 +389,35 @@ class CoreEngine:
                 errors=[CoreError(code=ErrorCode.APPROVAL_REQUIRED, message=reason)],
             )
             return outcome
+        if decision == "rejected":
+            return self._rejected_decision(approval_row, session_id)
         return await self._run_resumed_task(approval_row, decision, ok, reason, session_id)
+
+    def _rejected_decision(
+        self, approval_row: dict[str, Any], session_id: str
+    ) -> CoreRequestResult:
+        """#58: deny is a clean failure - the proposal is denied, the task
+        fails, and no fresh approval is created for the same work."""
+        proposal_row = self.repos.proposals.get(approval_row["proposal_id"])
+        task_id: Optional[str] = None
+        if proposal_row is not None:
+            task_id = proposal_row.get("task_id")
+            self.repos.proposals.set_status(proposal_row["proposal_id"], "denied")
+            if task_id:
+                self.repos.tasks.set_status(task_id, "failed")
+        message = "user rejected the action"
+        self.repos.audit.append(
+            "approval_denied",
+            proposal_row.get("request_id") if proposal_row else None,
+            task_id,
+            {"approval_id": approval_row["approval_id"]},
+        )
+        return CoreRequestResult(
+            request_id=str(uuid4()), session_id=session_id,
+            status=LifecycleStatus.failed.value, route=None,
+            response_text=message,
+            errors=[CoreError(code=ErrorCode.POLICY_DENIED, message=message)],
+        )
 
     async def _run_resumed_task(
         self, approval_row: dict[str, Any], decision: str, ok: bool, reason: str,

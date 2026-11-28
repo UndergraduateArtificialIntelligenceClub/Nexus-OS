@@ -5,6 +5,11 @@
     POST /api/v1/agent/runs/{run_id}/resume    answer an interrupt  -> 202
     POST /api/v1/agent/runs/{run_id}/cancel    stop a run
     GET  /api/v1/agents[?session_id=]          agent roster (read-only)
+    POST /api/v1/agents/{agent_id}/pause       roster verbs (#57)  -> 202; 409 when
+    POST /api/v1/agents/{agent_id}/resume      the engine cannot honestly
+    POST /api/v1/agents/{agent_id}/cancel      perform them (cancel completes the
+    POST /api/v1/agents/{agent_id}/retry       in-flight call first, then stops;
+    POST /api/v1/agents/{agent_id}/run_now    404 for unknown agents)
     GET  /api/v1/tools                         registered tool contracts
     PUT  /api/v1/workspaces/{workspace_id}     persist_workspace: save a shell layout
     GET  /api/v1/workspaces/{workspace_id}     load a saved shell layout (restore on launch)
@@ -33,6 +38,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from agent.core import CoreEngine
 from api.agents import AgentRoster
+from api.commands import AgentCommands, AgentNotFound
 from api.events import CLIENT_EVENTS, EventType, Source, WsEnvelope, api_error
 from api.hub import SessionHub
 from api.runs import RunConflict, RunManager, RunNotFound
@@ -50,6 +56,7 @@ class ApiRuntime:
     hub: SessionHub
     runs: RunManager
     roster: AgentRoster
+    commands: AgentCommands
 
     @classmethod
     def build(cls, settings: Optional[EngineSettings] = None) -> "ApiRuntime":
@@ -59,8 +66,9 @@ class ApiRuntime:
         engine = CoreEngine(settings, desktop_bridge=bridge)
         roster = AgentRoster(hub)
         engine.worker.add_listener(roster.on_worker)
-        return cls(engine=engine, hub=hub, runs=RunManager(engine, hub, roster),
-                   roster=roster)
+        runs = RunManager(engine, hub, roster)
+        return cls(engine=engine, hub=hub, runs=runs, roster=roster,
+                   commands=AgentCommands(engine, hub, roster, runs))
 
     async def aclose(self) -> None:
         await self.engine.aclose()
@@ -161,7 +169,7 @@ def create_v1_router(get_runtime: Callable[[], ApiRuntime]) -> APIRouter:
     @router.post("/agent/runs/{run_id}/resume", status_code=202)
     async def resume_run(run_id: str, body: ResumeBody):
         try:
-            return get_runtime().runs.resume(run_id, body.resume).view()
+            return (await get_runtime().runs.resume(run_id, body.resume)).view()
         except RunNotFound:
             return _error(404, "NOT_FOUND", f"run {run_id} does not exist")
         except RunConflict as error:
@@ -183,6 +191,43 @@ def create_v1_router(get_runtime: Callable[[], ApiRuntime]) -> APIRouter:
         if session_id is not None and not _is_uuid(session_id):
             return _error(400, "INVALID_INPUT", "session_id must be a UUID")
         return {"agents": get_runtime().roster.list(session_id)}
+
+    # -- Roster verbs (#57): the per-agent command surface. ----------------
+
+    async def _agent_verb(verb: str, agent_id: str, perform):
+        try:
+            result = perform(agent_id)
+            if asyncio.iscoroutine(result):
+                result = await result
+            return result
+        except AgentNotFound:
+            return _error(404, "NOT_FOUND", f"agent {agent_id} is not on the roster")
+        except RunNotFound as error:
+            return _error(404, "NOT_FOUND", str(error.args[0]))
+        except RunConflict as error:
+            return _error(409, "CONFLICT", str(error))
+        except (ValidationError, ValueError) as error:
+            return _error(400, "INVALID_INPUT", str(error))
+
+    @router.post("/agents/{agent_id}/pause", status_code=202)
+    async def pause_agent(agent_id: str):
+        return await _agent_verb("pause", agent_id, get_runtime().commands.pause)
+
+    @router.post("/agents/{agent_id}/resume", status_code=202)
+    async def resume_agent(agent_id: str):
+        return await _agent_verb("resume", agent_id, get_runtime().commands.resume)
+
+    @router.post("/agents/{agent_id}/cancel", status_code=202)
+    async def cancel_agent(agent_id: str):
+        return await _agent_verb("cancel", agent_id, get_runtime().commands.cancel)
+
+    @router.post("/agents/{agent_id}/retry", status_code=202)
+    async def retry_agent(agent_id: str):
+        return await _agent_verb("retry", agent_id, get_runtime().commands.retry)
+
+    @router.post("/agents/{agent_id}/run_now", status_code=202)
+    async def run_now_agent(agent_id: str):
+        return await _agent_verb("run_now", agent_id, get_runtime().commands.run_now)
 
     @router.get("/tools")
     async def list_tools() -> dict[str, Any]:
