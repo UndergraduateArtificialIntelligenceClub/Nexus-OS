@@ -59,6 +59,16 @@ class EngineSettings:
     approval_ttl_seconds: int = field(
         default_factory=lambda: int(_env("NEXUS_APPROVAL_TTL_SECONDS", "300"))
     )
+    # Interrupt timeout policy (#58): when a pending approval expires
+    # unheard, "auto_deny" fails the run cleanly with APPROVAL_EXPIRED;
+    # "escalate" re-issues the interrupt with a same-length expiry up to the
+    # escalation bound before denying.
+    interrupt_timeout_policy: str = field(
+        default_factory=lambda: _env("NEXUS_INTERRUPT_TIMEOUT_POLICY", "auto_deny")
+    )
+    interrupt_max_escalations: int = field(
+        default_factory=lambda: int(_env("NEXUS_INTERRUPT_MAX_ESCALATIONS", "2"))
+    )
     # Policy knob: reversible_write may auto-approve (doc: "Policy-dependent").
     auto_approve_reversible_write: bool = field(
         default_factory=lambda: _env_bool("NEXUS_AUTO_APPROVE_REVERSIBLE_WRITES", False)

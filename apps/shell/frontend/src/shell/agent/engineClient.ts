@@ -9,6 +9,7 @@
 //   const { run_id } = await engine.startRun('open browser', 'voice')
 
 import type {
+  AgentCommandVerb,
   AgentIdentity,
   ApiError,
   CreateRunBody,
@@ -144,6 +145,19 @@ export function createEngineClient(options: EngineClientOptions = {}) {
     cancel: (runId: string) => request<RunView>('POST', `/agent/runs/${runId}/cancel`),
 
     getRun: (runId: string) => request<RunView>('GET', `/agent/runs/${runId}`),
+
+    /**
+     * Roster verbs (#57): the engine's per-agent command surface,
+     * `POST /api/v1/agents/{agent_id}/{verb}` (pause | resume | cancel | retry | run_now).
+     * Rejects with the shared error shape (409 CONFLICT) when the engine cannot
+     * honestly perform the verb for that agent's current status. A verb that
+     * policy gates returns `approval_required` with an `awaiting_input` run;
+     * answer its interrupt through `resume`, as for a task approval.
+     */
+    agentCommand: (agentId: string, verb: AgentCommandVerb) =>
+      request<{ agent_id: string; verb: AgentCommandVerb; run: RunView; approval_required?: boolean }>(
+        'POST', `/agents/${encodeURIComponent(agentId)}/${verb}`,
+      ),
 
     /** Agent roster for this session; live changes arrive as agent.updated. */
     listAgents: () =>

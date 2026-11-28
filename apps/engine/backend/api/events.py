@@ -64,6 +64,7 @@ class AgentStatus(str, Enum):
     idle = "idle"  # known, not started (e.g. waiting for a task dependency)
     running = "running"
     waiting = "waiting"  # blocked on a human decision (approval / clarify)
+    paused = "paused"  # a cooperative run pause (#57): halted at a node boundary
     done = "done"
     error = "error"
 

@@ -107,6 +107,20 @@ describe('engineClient', () => {
     expect(init.method).toBe('GET')
   })
 
+  it('posts a roster verb to the per-agent command surface (#57)', async () => {
+    const fetchImpl = vi.fn(async () => new Response(
+      JSON.stringify({ verb: 'pause', agent_id: 'supervisor:r1', run: { run_id: 'r1', status: 'running' } }),
+      { status: 202 },
+    ))
+    const { client } = setup({ fetchImpl })
+    await expect(client.agentCommand('supervisor:r1', 'pause')).resolves.toMatchObject({
+      verb: 'pause', agent_id: 'supervisor:r1', run: { run_id: 'r1' },
+    })
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('http://127.0.0.1:8000/api/v1/agents/supervisor%3Ar1/pause')
+    expect(init.method).toBe('POST')
+  })
+
   it('re-sends the last wm.state after reconnecting', () => {
     vi.useFakeTimers()
     const { client, socket } = setup()

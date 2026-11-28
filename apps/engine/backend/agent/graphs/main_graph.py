@@ -48,6 +48,15 @@ def _val(state: Any, name: str, default: Any = None) -> Any:
     return getattr(state, name, default)
 
 
+# A task in one of these persisted statuses is not dispatchable: it already
+# finished, is waiting on a human, or is owned by another pass (a roster verb
+# may have moved it while the graph holds it as "ready", #57).
+_NOT_DISPATCHABLE = frozenset({
+    "executed", "succeeded", "completed", "failed", "blocked",
+    "unknown_outcome", "needs_input", "running",
+})
+
+
 class CoreServices:
     """Bundle of engine collaborators shared by graph node closures."""
 
@@ -176,15 +185,14 @@ def build_main_graph(services: CoreServices):
         envelope = _envelope(state)
         ready = list(_val(state, "ready_task_ids") or [])
         # Re-check persistence before fan-out (doc 03 §7: checkpoint before
-        # dispatch; completed work is never re-run).
+        # dispatch; completed work is never re-run). "running" is skipped
+        # too: a task a roster verb (#57) started stays owned by that pass.
         dispatchable = []
         for task_id in ready:
             row = repos.tasks.get(task_id)
             if row is None:
                 continue
-            if row["status"] in ("executed", "succeeded", "completed",
-                                 "failed", "blocked", "unknown_outcome",
-                                 "needs_input"):
+            if row["status"] in _NOT_DISPATCHABLE:
                 continue
             dispatchable.append(task_id)
         limit = max(settings.max_parallel_tasks, 1)
@@ -252,6 +260,13 @@ def build_main_graph(services: CoreServices):
                 if pending:
                     continue
                 ready.append(task_id)
+        # #57: a roster verb (run_now / retry) can move a planned task to
+        # running, waiting, or done while the graph still lists it as ready.
+        # Ready means dispatchable - the same statuses the dispatch node
+        # skips - so a task a verb owns never keeps the loop spinning.
+        ready = [task_id for task_id in ready
+                 if (row := repos.tasks.get(task_id)) is not None
+                 and row["status"] not in _NOT_DISPATCHABLE]
         nxt, status = _progress_decision(state, settings, ready)
         repos.requests.set_status(envelope.request_id, status.value)
         repos.audit.append(
@@ -510,19 +525,28 @@ def build_main_graph(services: CoreServices):
     # Wiring
     # ------------------------------------------------------------------
 
+    def gated(node):
+        """#57: the run gate is checked at every node boundary, so the node
+        that is currently running - including an in-flight tool call - always
+        completes before a requested pause or cancel takes effect."""
+        async def wrapper(state: MainGraphState) -> dict[str, Any]:
+            services.engine.run_gate.check(_envelope(state).request_id)
+            return await node(state)
+        return wrapper
+
     graph = StateGraph(MainGraphState)
-    graph.add_node("ingest_build_context", node_ingest_build_context)
-    graph.add_node("choose_route", node_choose_route)
-    graph.add_node("clarify", node_clarify)
-    graph.add_node("fast_direct_task", node_fast_direct_task)
-    graph.add_node("supervisor_plan", node_supervisor_plan)
-    graph.add_node("validate_plan", node_validate_plan)
-    graph.add_node("dispatch_ready_tasks", node_dispatch_ready_tasks)
-    graph.add_node("collect_merge", node_collect_merge)
-    graph.add_node("evaluate_progress", node_evaluate_progress)
-    graph.add_node("bounded_replan", node_bounded_replan)
-    graph.add_node("synthesize_outcome", node_synthesize_outcome)
-    graph.add_node("respond_propose_memory", node_respond_propose_memory)
+    graph.add_node("ingest_build_context", gated(node_ingest_build_context))
+    graph.add_node("choose_route", gated(node_choose_route))
+    graph.add_node("clarify", gated(node_clarify))
+    graph.add_node("fast_direct_task", gated(node_fast_direct_task))
+    graph.add_node("supervisor_plan", gated(node_supervisor_plan))
+    graph.add_node("validate_plan", gated(node_validate_plan))
+    graph.add_node("dispatch_ready_tasks", gated(node_dispatch_ready_tasks))
+    graph.add_node("collect_merge", gated(node_collect_merge))
+    graph.add_node("evaluate_progress", gated(node_evaluate_progress))
+    graph.add_node("bounded_replan", gated(node_bounded_replan))
+    graph.add_node("synthesize_outcome", gated(node_synthesize_outcome))
+    graph.add_node("respond_propose_memory", gated(node_respond_propose_memory))
 
     graph.add_edge(START, "ingest_build_context")
     graph.add_edge("ingest_build_context", "choose_route")

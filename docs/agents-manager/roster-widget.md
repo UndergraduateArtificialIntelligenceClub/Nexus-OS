@@ -18,14 +18,20 @@ One row per engine agent, as in [concepts.md](concepts.md) §2:
 activity                         role
 ```
 
-- **status** uses the contract's words (`idle`, `running`, `waiting`, `done`,
-  `error`). The glyph comes from the AI kit's `AgentStatus`: a spinner for
+- **status** uses the contract's words (`idle`, `running`, `waiting`, `paused`,
+  `done`, `error`). The glyph comes from the AI kit's `AgentStatus`: a spinner for
   `running` and `waiting`, `·` otherwise. Teal marks `running` and `waiting`.
 - **elapsed** is now − `since` (time in the current status). `idle` shows `—`.
 - **activity** is `last_activity`, verbatim.
 - **role** is left out for supervisors, whose label already is their role.
-- **actions**: none. Level 1 is read-only; verbs arrive with #57, and only
-  for what the engine can perform.
+- **actions**: the verbs the engine can honestly perform (#57), enabled only
+  while the engine is live. Supervisors carry the run verbs (`pause` /
+  `resume` / `cancel` by status, `retry` on `error`); task agents get `open`
+  while `waiting`, `retry` after `error`, and `run now` while `idle`. A
+  `waiting` row also says `needs a decision`; its `open` verb surfaces the
+  engine's pending interrupt as an `InterruptPanel` rendered on that row
+  (#58) - one decision, one run, never a panel over the roster - and
+  answering resolves through the run's `resume`.
 
 Rows are grouped by run, newest run first. Inside a run they keep the engine's
 creation order: the supervisor, then its task agents (indented). Labels repeat
@@ -43,9 +49,32 @@ calls `start()` on mount and the returned stop function on unmount.
 | Source | Used by | Data |
 |---|---|---|
 | `liveRosterSource()` | the app | `GET /api/v1/agents?session_id=` to catch up, then `agent.updated` events |
-| `fixtureRosterSource()` | tests; offline development with `VITE_NEXUS_ROSTER=fixture` | three runs that cover every status, in the contract's exact shape |
+| `fixtureRosterSource()` | tests; offline development with `VITE_NEXUS_ROSTER=fixture` | six runs that cover every status, in the contract's exact shape, behind a simulated engine |
 
-The fixture is never a fallback for a lost engine.
+The fixture is never a fallback for a lost engine. Its dummy rows ride a
+simulated engine: a verb answers after a short beat (the optimistic flip is
+visible first), `open` answers from the waiting row's own message, and a
+decision moves the whole waiting crew. Pausing a supervisor completes the
+run's in-flight task and halts the rest, like the engine's node-boundary
+pause; resuming dispatches the remaining work and finishes the run. The
+`fixture` badge keeps it honest.
+
+### Commands (the verb + interrupt seam, #57 / #58)
+
+`RosterSource.commands` is how the widget reaches the engine. The live source
+wires it to the engine's REST surface through the roster's observe-only
+client; the fixture simulates the same answers behind its dummy rows.
+
+| Command | Engine connection | Used for |
+|---|---|---|
+| `command(agentId, verb)` | `POST /api/v1/agents/{agent_id}/{verb}` (`pause`, `resume`, `cancel`, `retry`, `run_now`) | the row verbs, shown optimistically until `agent.updated` confirms and rolled back on rejection (409) |
+| `getInterrupt(runId)` | `GET /api/v1/agent/runs/{run_id}` → its `interrupt` | the `open` verb: the message + options the `InterruptPanel` shows |
+| `resume(runId, answer)` | `POST /api/v1/agent/runs/{run_id}/resume` | resolving an interrupt: approve → the row returns to `running`; deny → a clean failure with the row's `error` state |
+
+Rows stay engine-owned: commands never mutate them, the `agent.updated`
+events that follow do. The verbs are the status's own - a row whose status
+does not fit a verb never shows it, and the engine's 409 rolls back any
+optimistic flip.
 
 ### Session
 
@@ -108,12 +137,16 @@ The roster stays `offline` until the next catch-up list loads.
 
 - [ ] Not a chat surface: no text input, no message list, no replies.
 - [ ] Not engine settings: no switches, selects or configuration.
-- [ ] Not a permission pop-up factory: no dialog, no approve / deny. Waiting
-      agents say what they wait for; answering belongs to `InterruptPanel` (#58).
-- [ ] No verb the engine cannot perform: the only buttons are row selection.
+- [ ] Not a permission pop-up factory: no dialog, no unprompted panels. The
+      interrupt appears only through a waiting row's `open` verb, rendered
+      with the UI library's `InterruptPanel` (#58), and a clarify with no
+      options tells the user to answer through the orb.
+- [ ] No verb the engine cannot perform: the verbs are the status's own
+      (#57), disabled without a live engine, optimistic with rollback on
+      rejection.
 
-`App.test.tsx` asserts these: no textbox, dialog, checkbox or switch, and every
-button is a roster row.
+`App.test.tsx` asserts these: no textbox, dialog, checkbox or switch, and the
+verb buttons belong to their own roster row.
 
 ## Limits
 

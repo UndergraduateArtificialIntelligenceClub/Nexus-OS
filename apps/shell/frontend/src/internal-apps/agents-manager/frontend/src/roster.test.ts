@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { AgentStatus } from '@/types/agentEvents'
 import {
   defaultRosterSource,
   engineRosterFeed,
@@ -12,6 +13,7 @@ import {
   rosterSummary,
   toRow,
   upsertRow,
+  verbsFor,
 } from './roster'
 import { T0, agent, fakeFeed, updated } from './testFeed'
 
@@ -29,21 +31,81 @@ describe('fixture roster', () => {
       )
     }
     expect(new Set(agents.map((item) => item.status))).toEqual(
-      new Set(['idle', 'running', 'waiting', 'done', 'error']),
+      new Set(['idle', 'running', 'waiting', 'paused', 'done', 'error']),
     )
   })
 
-  it('is static: kind fixture, never connects', () => {
+  it('simulates the engine behind its dummy rows: verbs drive them (#57)', async () => {
     const source = fixtureRosterSource()
-    const before = source.snapshot()
-    source.start()()
     expect(source.kind).toBe('fixture')
-    expect(before.connection).toBe('fixture')
-    expect(source.snapshot()).toBe(before)
+    expect(source.snapshot().connection).toBe('fixture')
+    expect(source.commands).not.toBeNull()
+    const before = source.snapshot().rows
+    source.start()()
+    expect(source.snapshot().rows).toBe(before) // quiet until a verb lands
+
+    await source.commands!.command('supervisor:run-research', 'pause')
+    let row = source.snapshot().rows.find((r) => r.id === 'supervisor:run-research')
+    expect(row?.status).toBe('paused')
+    expect(row?.activity).toBe('paused by the user')
+    // Pausing the run pauses its work: the in-flight pass completes first
+    // (#57 semantics), the planned task is never dispatched.
+    const read = source.snapshot().rows.find((r) => r.id === 'task:req-research:read')
+    expect(read?.status).toBe('done')
+    expect(read?.activity).toBe('completed before the pause')
+    const save = source.snapshot().rows.find((r) => r.id === 'task:req-research:save')
+    expect(save?.status).toBe('idle')
+
+    await source.commands!.command('supervisor:run-research', 'resume')
+    row = source.snapshot().rows.find((r) => r.id === 'supervisor:run-research')
+    expect(row?.status).toBe('running')
+    expect(row?.activity).toBe('resumed by the user')
+
+    // the interrupt answers from the waiting row's own message
+    const interrupt = await source.commands!.getInterrupt('run-open')
+    expect(interrupt?.kind).toBe('confirm')
+    expect(interrupt?.message).toContain('Allow open_application')
+
+    // deny is a clean failure for the whole waiting crew (#58)
+    await source.commands!.resume('run-open', 'no')
+    const crew = source.snapshot().rows.filter((r) => r.runId === 'run-open')
+    for (const member of crew) {
+      expect(member.status).toBe('error')
+      expect(member.activity).toBe('user rejected the action')
+    }
+
+    // approve continues the other waiting run to completion (#58)
+    await source.commands!.resume('run-report', 'yes')
+    const report = source.snapshot().rows.filter((r) => r.runId === 'run-report')
+    expect(report.length).toBe(2)
+    for (const member of report) {
+      expect(member.status).toBe('done')
+      expect(member.activity).toBe('completed the approved work')
+    }
   })
 
   it('is the default source under test', () => {
     expect(defaultRosterSource().kind).toBe('fixture')
+  })
+})
+
+describe('verbs', () => {
+  const row = (role: string, status: AgentStatus) => ({ role, status })
+
+  it('offers each row only what its status can honestly perform', () => {
+    // Supervisors carry the run verbs (concepts.md §2 row anatomy).
+    expect(verbsFor(row('supervisor', 'running'))).toEqual(['pause', 'cancel'])
+    expect(verbsFor(row('supervisor', 'paused'))).toEqual(['resume', 'cancel'])
+    expect(verbsFor(row('supervisor', 'waiting'))).toEqual(['open', 'cancel'])
+    expect(verbsFor(row('supervisor', 'error'))).toEqual(['retry'])
+    expect(verbsFor(row('supervisor', 'done'))).toEqual([])
+    // Task agents carry their own pass: open while waiting, cancel while
+    // running or waiting, retry after failure, run now while planned.
+    expect(verbsFor(row('discovery', 'waiting'))).toEqual(['open', 'cancel'])
+    expect(verbsFor(row('recipe', 'error'))).toEqual(['retry', 'cancel'])
+    expect(verbsFor(row('knowledge', 'idle'))).toEqual(['run_now'])
+    expect(verbsFor(row('desktop', 'running'))).toEqual(['cancel'])
+    expect(verbsFor(row('recipe', 'done'))).toEqual([])
   })
 })
 
@@ -63,8 +125,8 @@ describe('rows', () => {
 
   it('counts and summarizes only what needs attention', () => {
     const rows = fixtureAgents().map(toRow)
-    expect(rosterCounts(rows)).toEqual({ idle: 1, running: 2, waiting: 2, done: 1, error: 2 })
-    expect(rosterSummary(rows)).toBe('2 running · 2 waiting · 2 error')
+    expect(rosterCounts(rows)).toEqual({ idle: 2, running: 2, waiting: 4, paused: 1, done: 3, error: 2 })
+    expect(rosterSummary(rows)).toBe('2 running · 4 waiting · 1 paused · 2 error')
     expect(rosterSummary([toRow(agent('a', { status: 'done' }))])).toBe('all quiet')
   })
 
@@ -211,6 +273,22 @@ describe('live roster source', () => {
     harness.connect(false)
     await flush()
     expect(source.snapshot()).toMatchObject({ rows: [], connection: 'connecting' })
+  })
+
+  it('wires the verb and interrupt seam (#57 / #58) to the feed', async () => {
+    const harness = fakeFeed()
+    const source = liveRosterSource(harness.feed)
+    const commands = source.commands
+    expect(commands).not.toBeNull()
+
+    await commands!.command('supervisor:run-1', 'pause')
+    expect(harness.feed.command).toHaveBeenCalledWith('supervisor:run-1', 'pause')
+
+    await commands!.getInterrupt('run-1')
+    expect(harness.feed.getRun).toHaveBeenCalledWith('run-1')
+
+    await commands!.resume('run-1', 'yes')
+    expect(harness.feed.resume).toHaveBeenCalledWith('run-1', 'yes')
   })
 })
 

@@ -7,7 +7,7 @@ export type AgentStateName = 'idle' | 'listening' | 'thinking' | 'acting' | 'wai
 export type RunSource = 'voice' | 'text' | 'ui'
 
 /** API-level run status. */
-export type RunStatus = 'received' | 'running' | 'awaiting_input' | 'completed' | 'failed' | 'cancelled'
+export type RunStatus = 'received' | 'running' | 'awaiting_input' | 'paused' | 'completed' | 'failed' | 'cancelled'
 
 export type InterruptKind = 'confirm' | 'clarify'
 
@@ -16,7 +16,10 @@ export type TaskStatus = 'queued' | 'running' | 'done' | 'failed' | 'skipped'
 export type RunOutcome = 'ok' | 'failed' | 'cancelled'
 
 /** Roster status of one engine agent (not the avatar - see AgentStateName). */
-export type AgentStatus = 'idle' | 'running' | 'waiting' | 'done' | 'error'
+export type AgentStatus = 'idle' | 'running' | 'waiting' | 'paused' | 'done' | 'error'
+
+/** Per-agent command verbs (#57): the engine's per-agent control surface. `open` is not a command - it routes the row into `InterruptPanel` (#58). */
+export type AgentCommandVerb = 'pause' | 'resume' | 'cancel' | 'retry' | 'run_now'
 
 /** One engine agent: `supervisor` per run, or one worker per task.
  *  Contract: docs/agents-manager/agent-identity.md. */

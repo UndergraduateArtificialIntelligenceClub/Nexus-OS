@@ -18,7 +18,7 @@ SESSION = "44444444-4444-4444-4444-444444444444"
 OTHER_SESSION = "55555555-5555-5555-5555-555555555555"
 AGENT_KEYS = {"agent_id", "role", "label", "status", "since", "owner_run_id",
               "last_activity", "updated_at"}
-STATUSES = {"idle", "running", "waiting", "done", "error"}
+STATUSES = {"idle", "running", "waiting", "paused", "done", "error"}
 
 
 @pytest.fixture()
